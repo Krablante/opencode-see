@@ -28,7 +28,28 @@ The only network activity initiated by this repository is:
 
 - Chromium loading the URL explicitly passed to `screenshot`;
 - local loopback HTTP and WebSocket traffic used to control that Chromium
-  process through the Chrome DevTools Protocol.
+  process through the Chrome DevTools Protocol;
+- one bounded local OpenCode session-history read when a completed remote
+  mid-turn compaction has hidden an active image tool result.
+
+## Remote compaction boundary
+
+Some compatible hosts can replace an active turn with opaque server-side state
+between a tool result and the model continuation. `opencode-see` handles only
+the exact completed boundary represented by an automatic `mid-turn` compaction
+part with an OpenAI remote payload and an original turn ID.
+
+The message hook checks only the final two projected messages. On a match, it
+reads at most 32 recent session messages, finds the last assistant step from the
+original turn, and restores up to five completed `image_view` or `screenshot`
+attachments in a synthetic user message. That message exists only in the model
+projection. It is not written to session history or shown in the UI.
+
+There is no separate provider, model, auth, or config lookup, and no cache,
+background task, or persistent replay state. Ordinary OpenCode, local
+compaction, legacy transports, other providers, uncompacted turns, and completed
+continuations return before the session read. Provider retries rebuild the same
+projection until one normal assistant continuation completes.
 
 ## Image path boundary
 

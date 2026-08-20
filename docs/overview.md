@@ -16,7 +16,11 @@ There are three deliberately separate levels:
    attachment into the image-input shape supported by the current model.
 
 The plugin owns only level one and the standard boundary into level two. It
-does not know which provider or model receives the request.
+does not select, configure, or call the provider or model that receives the
+request. If a compatible host hides an active tool attachment behind completed
+remote compaction, the plugin can use that marker's remote provider ID to
+restore the same stored attachment for the immediate continuation without
+interpreting or caching it.
 
 ## Intended use
 

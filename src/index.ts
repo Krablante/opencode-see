@@ -2,6 +2,7 @@ import type { Plugin, ToolContext } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { CaptureUnavailableError, captureScreenshot } from "./capture.js"
+import { createCompactionReplay } from "./compaction-replay.js"
 import { loadConfig } from "./config.js"
 import { MAX_IMAGES } from "./constants.js"
 import { formatImageMetadata, viewImages } from "./view.js"
@@ -31,7 +32,7 @@ export async function authorizeImagePaths(context: ToolContext, paths: string[])
   await context.ask({ permission: "read", patterns: readPatterns, always: readPatterns, metadata: { paths } })
 }
 
-export const OpenCodeSeePlugin: Plugin = async () => ({
+export const OpenCodeSeePlugin: Plugin = async ({ client }) => ({
   tool: {
     image_view: tool({
       description:
@@ -104,6 +105,7 @@ export const OpenCodeSeePlugin: Plugin = async () => ({
       },
     }),
   },
+  "experimental.chat.messages.transform": createCompactionReplay(client),
 })
 
 export default OpenCodeSeePlugin

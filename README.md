@@ -57,6 +57,12 @@ That makes the plugin model-agnostic. It works with any provider/model
 combination whose OpenCode capability declares image input. A ChatGPT OAuth
 session can carry the same attachment without giving this plugin an API key.
 
+If a compatible host performs remote mid-turn compaction before the model sees
+a tool attachment, the plugin restores the latest image batch from session
+history for the immediate continuation. The replay is invisible in the UI,
+keeps no cache, and remains inactive for ordinary OpenCode, local compaction,
+and provider paths that already deliver the images normally.
+
 ## 🎬 It really looks
 
 <p align="center">

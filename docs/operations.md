@@ -10,6 +10,12 @@ image resizing and provider transport.
 There is no persistent browser, queue, cache, worker, or service. The default
 timeout is 30 seconds and the default late-content budget is 2 seconds.
 
+The message transform normally returns without I/O. Only a completed compatible
+remote mid-turn compaction marker causes one local OpenCode history read, capped
+at 32 messages, to restore up to five image attachments for the immediate model
+continuation. The replay is projection-only and keeps no cache or persistent
+state.
+
 ## Paths
 
 - public config: `~/.config/opencode/opencode-see.json` unless the active

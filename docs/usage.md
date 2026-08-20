@@ -23,6 +23,18 @@ Image metadata:
 threshold of 2000 pixels on one side or 5 MiB of base64 data. The plugin reports
 that fact but leaves resizing to the core.
 
+### Long sessions
+
+Image tools need no special workflow in long sessions. If a compatible host
+performs remote mid-turn compaction before the model receives the tool result,
+`opencode-see` restores the latest batch for the immediate continuation. The
+replay is automatic, invisible in session history, and limited to five images.
+
+This path is selected from the completed compaction marker itself. It performs
+no separate model, provider, auth, or config lookup and stays inactive for
+ordinary OpenCode, local or legacy compaction, other providers, and turns that
+did not compact. No configuration is required.
+
 ## `screenshot`
 
 ```json
