@@ -146,8 +146,7 @@ Vision via gpt-5.6-luna:
 {
   "visionDelegate": {
     "enabled": true,
-    "providerID": "opencode-go",
-    "modelID": "gpt-5.6-luna",
+    "model": "opencode-go/gpt-5.6-luna",
     "prompt": "Опиши содержимое каждой приложенной картинки подробно и по делу.",
     "timeoutMs": 90000,
     "deleteAfter": true
@@ -155,12 +154,23 @@ Vision via gpt-5.6-luna:
 }
 ```
 
+Чтобы использовать существующую ChatGPT OAuth-сессию, достаточно заменить одну
+строку модели:
+
+```json
+{
+  "visionDelegate": {
+    "model": "openai/gpt-5.6-luna"
+  }
+}
+```
+
 Делегированный запрос выполняет сервер OpenCode со своей существующей
 аутентификацией провайдера. При `enabled: false` плагин вместо описания честно
 сообщит, что активная модель не поддерживает картинки. Каждый делегированный
-вызов может расходовать кредиты настроенного провайдера. Переменные окружения:
-`OPENCODE_SEE_DELEGATE_ENABLED`, `_PROVIDER_ID`, `_MODEL_ID`, `_PROMPT`,
-`_TIMEOUT_MS` и `_DELETE_AFTER`; полная таблица есть в [Usage](./docs/usage.md).
+вызов может расходовать кредиты настроенного провайдера. Для такого же
+переключения через окружение есть `OPENCODE_SEE_DELEGATE_MODEL`; полная таблица и
+совместимость со старыми раздельными полями описаны в [Usage](./docs/usage.md).
 
 Для картинки вне активного worktree OpenCode запросит `external_directory`.
 Для каждой картинки будет запрошен `read`. MIME определяется по сигнатуре

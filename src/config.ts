@@ -4,9 +4,8 @@ import { isAbsolute, join, resolve } from "node:path"
 import {
   DEFAULT_DELEGATE_DELETE_AFTER,
   DEFAULT_DELEGATE_ENABLED,
-  DEFAULT_DELEGATE_MODEL_ID,
+  DEFAULT_DELEGATE_MODEL,
   DEFAULT_DELEGATE_PROMPT,
-  DEFAULT_DELEGATE_PROVIDER_ID,
   DEFAULT_DELEGATE_TIMEOUT_MS,
   DEFAULT_SCREENSHOT_DIR,
   DEFAULT_SCREENSHOT_TIMEOUT_MS,
@@ -30,6 +29,7 @@ export type SeeConfig = {
 
 export type VisionDelegateConfig = {
   enabled: boolean
+  model: string
   providerID: string
   modelID: string
   prompt: string
@@ -91,6 +91,23 @@ function booleanValue(value: unknown, fallback: boolean, label: string): boolean
   throw new Error(`${label} must be a boolean`)
 }
 
+function modelReference(value: unknown, fallback: string, label: string): {
+  model: string
+  providerID: string
+  modelID: string
+} {
+  const model = (nonEmptyString(value, label) ?? fallback).trim()
+  const separator = model.indexOf("/")
+  if (separator < 1 || separator === model.length - 1) {
+    throw new Error(`${label} must use the provider/model format`)
+  }
+  return {
+    model,
+    providerID: model.slice(0, separator),
+    modelID: model.slice(separator + 1),
+  }
+}
+
 export async function loadConfig(
   directory: string,
   env: NodeJS.ProcessEnv = process.env,
@@ -119,6 +136,29 @@ export async function loadConfig(
     file.visionDelegate && typeof file.visionDelegate === "object" && !Array.isArray(file.visionDelegate)
       ? file.visionDelegate as Record<string, unknown>
       : {}
+  const defaultDelegateModel = modelReference(DEFAULT_DELEGATE_MODEL, DEFAULT_DELEGATE_MODEL, "default delegate model")
+  const canonicalFileModel = modelReference(
+    visionDelegate.model,
+    DEFAULT_DELEGATE_MODEL,
+    `visionDelegate.model in ${configPath}`,
+  )
+  const fileDelegateProviderID = visionDelegate.model === undefined
+    ? nonEmptyString(visionDelegate.providerID, `visionDelegate.providerID in ${configPath}`) ??
+      defaultDelegateModel.providerID
+    : canonicalFileModel.providerID
+  const fileDelegateModelID = visionDelegate.model === undefined
+    ? nonEmptyString(visionDelegate.modelID, `visionDelegate.modelID in ${configPath}`) ??
+      defaultDelegateModel.modelID
+    : canonicalFileModel.modelID
+  const canonicalEnvironmentModel = env.OPENCODE_SEE_DELEGATE_MODEL === undefined
+    ? undefined
+    : modelReference(env.OPENCODE_SEE_DELEGATE_MODEL, DEFAULT_DELEGATE_MODEL, "OPENCODE_SEE_DELEGATE_MODEL")
+  const delegateProviderID = canonicalEnvironmentModel?.providerID ??
+    nonEmptyString(env.OPENCODE_SEE_DELEGATE_PROVIDER_ID, "OPENCODE_SEE_DELEGATE_PROVIDER_ID") ??
+    fileDelegateProviderID
+  const delegateModelID = canonicalEnvironmentModel?.modelID ??
+    nonEmptyString(env.OPENCODE_SEE_DELEGATE_MODEL_ID, "OPENCODE_SEE_DELEGATE_MODEL_ID") ??
+    fileDelegateModelID
   return {
     screenshotDirectory,
     screenshotRoot,
@@ -143,14 +183,9 @@ export async function loadConfig(
         DEFAULT_DELEGATE_ENABLED,
         "visionDelegate.enabled",
       ),
-      providerID:
-        nonEmptyString(env.OPENCODE_SEE_DELEGATE_PROVIDER_ID, "OPENCODE_SEE_DELEGATE_PROVIDER_ID") ??
-        nonEmptyString(visionDelegate.providerID, `visionDelegate.providerID in ${configPath}`) ??
-        DEFAULT_DELEGATE_PROVIDER_ID,
-      modelID:
-        nonEmptyString(env.OPENCODE_SEE_DELEGATE_MODEL_ID, "OPENCODE_SEE_DELEGATE_MODEL_ID") ??
-        nonEmptyString(visionDelegate.modelID, `visionDelegate.modelID in ${configPath}`) ??
-        DEFAULT_DELEGATE_MODEL_ID,
+      model: `${delegateProviderID}/${delegateModelID}`,
+      providerID: delegateProviderID,
+      modelID: delegateModelID,
       prompt:
         nonEmptyString(env.OPENCODE_SEE_DELEGATE_PROMPT, "OPENCODE_SEE_DELEGATE_PROMPT") ??
         nonEmptyString(visionDelegate.prompt, `visionDelegate.prompt in ${configPath}`) ??

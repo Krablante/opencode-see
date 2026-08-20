@@ -70,8 +70,7 @@ Create `opencode-see.json` in the active OpenCode config directory:
   "screenshotTimeoutMs": 30000,
   "visionDelegate": {
     "enabled": true,
-    "providerID": "opencode-go",
-    "modelID": "gpt-5.6-luna",
+    "model": "opencode-go/gpt-5.6-luna",
     "prompt": "Опиши содержимое каждой приложенной картинки подробно и по делу.",
     "timeoutMs": 90000,
     "deleteAfter": true
@@ -101,8 +100,7 @@ Environment overrides:
 | `OPENCODE_SEE_VIRTUAL_TIME_BUDGET_MS` | `virtualTimeBudgetMs` |
 | `OPENCODE_SEE_SCREENSHOT_TIMEOUT_MS` | `screenshotTimeoutMs` |
 | `OPENCODE_SEE_DELEGATE_ENABLED` | `visionDelegate.enabled` |
-| `OPENCODE_SEE_DELEGATE_PROVIDER_ID` | `visionDelegate.providerID` |
-| `OPENCODE_SEE_DELEGATE_MODEL_ID` | `visionDelegate.modelID` |
+| `OPENCODE_SEE_DELEGATE_MODEL` | `visionDelegate.model` |
 | `OPENCODE_SEE_DELEGATE_PROMPT` | `visionDelegate.prompt` |
 | `OPENCODE_SEE_DELEGATE_TIMEOUT_MS` | `visionDelegate.timeoutMs` |
 | `OPENCODE_SEE_DELEGATE_DELETE_AFTER` | `visionDelegate.deleteAfter` |
@@ -115,6 +113,14 @@ path with no delegated request. A text-only model causes the plugin to create a
 temporary session titled `opencode-see delegate`, prompt the configured vision
 model with the same data-URL image parts, collect assistant text, and delete the
 session when `deleteAfter` is true.
+
+The model uses OpenCode's ordinary `provider/model` notation. Keep
+`opencode-go/gpt-5.6-luna` to spend OpenCode Go credits, or set
+`openai/gpt-5.6-luna` to use the ChatGPT OAuth session already authenticated in
+OpenCode. No credential is copied into the plugin. The older `providerID` and
+`modelID` config fields and their `OPENCODE_SEE_DELEGATE_PROVIDER_ID` and
+`OPENCODE_SEE_DELEGATE_MODEL_ID` overrides remain accepted for compatibility,
+but new configurations should use `model`.
 
 The timeout covers session creation and the model prompt. Cancellation of the
 calling tool also cancels the delegated request. Authentication remains owned by

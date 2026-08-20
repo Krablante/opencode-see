@@ -14,6 +14,7 @@ const config: SeeConfig = {
   screenshotTimeoutMs: 100,
   visionDelegate: {
     enabled: true,
+    model: "opencode-go/gpt-5.6-luna",
     providerID: "opencode-go",
     modelID: "gpt-5.6-luna",
     prompt: "Describe the image.",

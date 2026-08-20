@@ -147,8 +147,7 @@ Configure it in `opencode-see.json`:
 {
   "visionDelegate": {
     "enabled": true,
-    "providerID": "opencode-go",
-    "modelID": "gpt-5.6-luna",
+    "model": "opencode-go/gpt-5.6-luna",
     "prompt": "Опиши содержимое каждой приложенной картинки подробно и по делу.",
     "timeoutMs": 90000,
     "deleteAfter": true
@@ -156,12 +155,22 @@ Configure it in `opencode-see.json`:
 }
 ```
 
+To use an existing ChatGPT OAuth session instead, change that one model string:
+
+```json
+{
+  "visionDelegate": {
+    "model": "openai/gpt-5.6-luna"
+  }
+}
+```
+
 The OpenCode server performs the delegated request with its existing provider
 authentication. Set `enabled` to `false` to return an explicit unsupported-model
 message instead. Each delegated call may consume credits from the configured
-provider. Environment overrides use the
-`OPENCODE_SEE_DELEGATE_ENABLED`, `_PROVIDER_ID`, `_MODEL_ID`, `_PROMPT`,
-`_TIMEOUT_MS`, and `_DELETE_AFTER` suffixes; see [Usage](./docs/usage.md).
+provider. `OPENCODE_SEE_DELEGATE_MODEL` provides the same one-string environment
+override; see [Usage](./docs/usage.md) for the remaining options and legacy
+split-field compatibility.
 
 Images outside the active worktree require OpenCode `external_directory`
 permission. Every image requires `read` permission. MIME types come from file

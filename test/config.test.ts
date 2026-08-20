@@ -17,6 +17,7 @@ describe("config", () => {
     assert.equal(config.screenshotTimeoutMs, 30000)
     assert.deepEqual(config.visionDelegate, {
       enabled: true,
+      model: "opencode-go/gpt-5.6-luna",
       providerID: "opencode-go",
       modelID: "gpt-5.6-luna",
       prompt: "Опиши содержимое каждой приложенной картинки подробно и по делу.",
@@ -38,8 +39,7 @@ describe("config", () => {
       screenshotTimeoutMs: 40000,
       visionDelegate: {
         enabled: false,
-        providerID: "file-provider",
-        modelID: "file-model",
+        model: "openai/gpt-5.6-luna",
         prompt: "File prompt",
         timeoutMs: 5000,
         deleteAfter: true,
@@ -50,7 +50,9 @@ describe("config", () => {
       OPENCODE_SEE_CHROMIUM: "/env/chromium",
       OPENCODE_SEE_VIEWPORT_WIDTH: "1600",
       OPENCODE_SEE_DELEGATE_ENABLED: "true",
-      OPENCODE_SEE_DELEGATE_MODEL_ID: "env-model",
+      OPENCODE_SEE_DELEGATE_MODEL: "opencode-go/gpt-5.6-luna",
+      OPENCODE_SEE_DELEGATE_PROVIDER_ID: "ignored-provider",
+      OPENCODE_SEE_DELEGATE_MODEL_ID: "ignored-model",
       OPENCODE_SEE_DELEGATE_PROMPT: "Env prompt",
       OPENCODE_SEE_DELEGATE_TIMEOUT_MS: "7000",
       OPENCODE_SEE_DELEGATE_DELETE_AFTER: "false",
@@ -62,8 +64,9 @@ describe("config", () => {
     assert.equal(config.screenshotTimeoutMs, 40000)
     assert.deepEqual(config.visionDelegate, {
       enabled: true,
-      providerID: "file-provider",
-      modelID: "env-model",
+      model: "opencode-go/gpt-5.6-luna",
+      providerID: "opencode-go",
+      modelID: "gpt-5.6-luna",
       prompt: "Env prompt",
       timeoutMs: 7000,
       deleteAfter: false,
@@ -99,6 +102,41 @@ describe("config", () => {
     await assert.rejects(
       loadConfig("/work", { OPENCODE_SEE_DELEGATE_ENABLED: "maybe" }, "/home/test", "linux"),
       /visionDelegate.enabled must be a boolean/,
+    )
+  })
+
+  it("keeps the legacy providerID and modelID fields compatible", async () => {
+    const root = await mkdtemp(join(tmpdir(), "opencode-see-legacy-model-"))
+    roots.push(root)
+    const path = join(root, "opencode-see.json")
+    await writeFile(path, JSON.stringify({
+      visionDelegate: { providerID: "legacy-provider", modelID: "legacy-model" },
+    }))
+
+    const config = await loadConfig("/work", { OPENCODE_SEE_CONFIG: path }, "/home/test", "linux")
+    assert.equal(config.visionDelegate.model, "legacy-provider/legacy-model")
+    assert.equal(config.visionDelegate.providerID, "legacy-provider")
+    assert.equal(config.visionDelegate.modelID, "legacy-model")
+  })
+
+  it("loads a one-string ChatGPT OAuth delegate from the config file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "opencode-see-oauth-model-"))
+    roots.push(root)
+    const path = join(root, "opencode-see.json")
+    await writeFile(path, JSON.stringify({
+      visionDelegate: { model: "openai/gpt-5.6-luna" },
+    }))
+
+    const config = await loadConfig("/work", { OPENCODE_SEE_CONFIG: path }, "/home/test", "linux")
+    assert.equal(config.visionDelegate.model, "openai/gpt-5.6-luna")
+    assert.equal(config.visionDelegate.providerID, "openai")
+    assert.equal(config.visionDelegate.modelID, "gpt-5.6-luna")
+  })
+
+  it("rejects delegate models without a provider prefix", async () => {
+    await assert.rejects(
+      loadConfig("/work", { OPENCODE_SEE_DELEGATE_MODEL: "gpt-5.6-luna" }, "/home/test", "linux"),
+      /OPENCODE_SEE_DELEGATE_MODEL must use the provider\/model format/,
     )
   })
 })
