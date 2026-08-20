@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
-import { describe, it } from "node:test"
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterEach, describe, it } from "node:test"
 import { CaptureUnavailableError, captureScreenshot, cliScratchPath, findChromium, isSnapChromium } from "../src/capture.js"
 import type { SeeConfig } from "../src/config.js"
 
@@ -10,6 +13,23 @@ const config: SeeConfig = {
   virtualTimeBudgetMs: 1,
   screenshotTimeoutMs: 100,
   configPath: "/tmp/opencode-see.json",
+}
+
+const roots: string[] = []
+afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))))
+
+async function fakeBrowser(name = "fake-chrome"): Promise<{ root: string; path: string }> {
+  const root = await mkdtemp(join(tmpdir(), "opencode-see-browser-"))
+  roots.push(root)
+  const path = join(root, name)
+  await writeFile(path, `#!/usr/bin/env node
+const fs = require("node:fs")
+const screenshot = process.argv.find((arg) => arg.startsWith("--screenshot="))
+if (!screenshot) process.exit(2)
+fs.writeFileSync(screenshot.slice("--screenshot=".length), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+X1dWAAAAAElFTkSuQmCC", "base64"))
+`)
+  await chmod(path, 0o755)
+  return { root, path }
 }
 
 describe("browser discovery", () => {
@@ -54,6 +74,34 @@ describe("capture validation", () => {
     await assert.rejects(
       captureScreenshot({ url: "http://localhost/", width: 0, config, env: { PATH: "" }, platform: "win32" }),
       /positive integers/,
+    )
+  })
+
+  it("falls back to the Chromium CLI when CDP fails for an ordinary executable", async () => {
+    const fake = await fakeBrowser()
+    const result = await captureScreenshot({
+      url: "http://localhost/",
+      outputPath: "fallback.png",
+      config: { ...config, screenshotRoot: fake.root, chromiumPath: fake.path },
+      env: { PATH: process.env.PATH },
+      platform: "linux",
+    })
+    assert.equal(result.backend, "cli")
+    assert.equal(result.absolutePath, join(fake.root, "fallback.png"))
+    assert.ok(result.bytes.length > 0)
+  })
+
+  it("does not use the CLI fallback for a snap Chromium launcher", async () => {
+    const fake = await fakeBrowser("chromium-browser")
+    await assert.rejects(
+      captureScreenshot({
+        url: "http://localhost/",
+        outputPath: "snap.png",
+        config: { ...config, screenshotRoot: fake.root, chromiumPath: fake.path },
+        env: { PATH: process.env.PATH, SNAP_USER_COMMON: fake.root },
+        platform: "linux",
+      }),
+      /CLI fallback is disabled because snap has a private \/tmp/,
     )
   })
 })
