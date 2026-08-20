@@ -1,13 +1,14 @@
 # Architecture
 
-The plugin is an adapter between the local filesystem and OpenCode's existing
-attachment contract.
+The plugin is an adapter between local or session-owned image bytes and
+OpenCode's existing attachment contract.
 
 ```text
-path ── resolve + authorize ──> bytes ──> data:image/...;base64,...
-                                               │
-                                               ▼
-                                  OpenCode file attachment
+local path ── resolve + authorize ──┐
+                                    ├──> validated bytes ──> data:image/...;base64,...
+session history ── current ID only ─┘                         │
+                                                              ▼
+                                                 OpenCode file attachment
                                                │
                                                ▼
                                    capability decision
@@ -36,6 +37,8 @@ The only network activity initiated by this repository is:
   process through the Chrome DevTools Protocol;
 - an OpenCode SDK request that creates, prompts, and optionally deletes a
   temporary vision session when the active model is text-only;
+- a current-session OpenCode history read when `image_view` uses `latest` or
+  `session` as its source;
 - one bounded local OpenCode session-history read when a completed remote
   mid-turn compaction has hidden an active image tool result.
 
@@ -69,7 +72,25 @@ receive an explicit unsupported-model message when delegation is disabled.
 Delegate requests are bounded by the configured timeout and the calling tool's
 abort signal. They use ordinary file parts in a temporary session, return only
 assistant text to the text-only caller, and delete that session by default. The
-plugin keeps no provider secret and no image-description cache.
+plugin keeps no provider secret and no image-description cache. A per-call
+`question` supplements rather than replaces the configured baseline delegate
+prompt. Only models that explicitly declare `input.image=false` receive the
+system hint that routes otherwise opaque image attachments to `image_view`.
+
+## Session image boundary
+
+`image_view` addresses the calling `ToolContext.sessionID` through
+`client.session.messages`; it never enumerates sessions. `latest` first inspects
+the newest 64 messages and falls back to the full current history only when that
+window is full and contains no supported image. Explicit `session` lookup reads
+the current history and returns at most five newest unique images.
+
+The extractor accepts top-level user file parts and `attachments` from completed
+tool states. It ignores remote URLs, unsupported labels, incomplete tool states,
+and malformed data. Accepted data URLs are decoded and passed through the same
+signature and dimension checks as local files, so attachment metadata is not a
+trust shortcut. Results are ephemeral; there is no cache, index, database, or
+cross-session lookup.
 
 ## Image path boundary
 

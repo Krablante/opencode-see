@@ -15,6 +15,7 @@ export async function createVisualResult(input: {
   images: DelegateImage[]
   metadata: string
   config: SeeConfig
+  question?: string
 }): Promise<VisualResult> {
   const capability = await resolveModelCapability(
     input.client,
@@ -47,6 +48,7 @@ export async function createVisualResult(input: {
       input.images,
       input.config.visionDelegate,
       input.context.abort,
+      input.question,
     )
     return {
       output: `${input.metadata}\n\nVision via ${input.config.visionDelegate.modelID}:\n${description}`,

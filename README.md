@@ -14,7 +14,7 @@ Native attachments for vision models; a configurable vision delegate for text-on
 </p>
 
 <p align="center">
-  <img alt="Version 0.2.0" src="https://img.shields.io/badge/version-0.2.0-e85d75?style=flat-square">
+  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-e85d75?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-e85d75?style=flat-square">
   <img alt="OpenCode plugin" src="https://img.shields.io/badge/OpenCode-plugin-e85d75?style=flat-square">
 </p>
@@ -35,11 +35,13 @@ images. OpenCode already knows how to transport image attachments. What was
 missing was the small, boring bridge from “this file on my machine” to that
 existing path.
 
-`opencode-see` adds the bridge. It reads a local PNG, JPEG, WebP, or GIF, asks
-OpenCode for the normal file permissions, and returns a standard attachment to
-vision-capable models. For text-only models it can ask a configured vision model
-to describe the same image and return that description as text. It can also ask
-a local Chromium installation to capture a web page first.
+`opencode-see` adds the bridge. It can read a local PNG, JPEG, WebP, or GIF, or
+reuse images already attached in the current OpenCode session. Local paths use
+the normal file permissions; session images come through the OpenCode SDK. Both
+become standard attachments for vision-capable models. For text-only models the
+plugin can ask a configured vision model a specific question about the same
+image and return its grounded answer as text. It can also ask a local Chromium
+installation to capture a web page first.
 
 ## 🪄 The whole trick
 
@@ -51,7 +53,7 @@ the configured vision delegate.
 
 ```mermaid
 flowchart LR
-  P[local path] --> T[image_view]
+  P[local path or session image] --> T[image_view]
   T --> C{active model supports images?}
   C -->|yes| A[file attachment]
   A --> M[active vision model]
@@ -116,13 +118,17 @@ when you want this repository; use the GitHub clone above.
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `image_view` | `paths` — 1–5 absolute, project-relative, or `~/` paths | Image attachments or a delegated description, plus path, MIME, bytes, dimensions, and core-resize metadata |
-| `screenshot` | `url`, optional `output_path`, `width`, `height` | Saved PNG plus an image attachment or delegated description and capture-backend metadata |
+| `image_view` | optional `paths`, `source` (`latest` or `session`), `question` | Local files, the latest current-session image batch by default, or up to five newest unique session images; returns native attachments or a question-focused delegated description |
+| `screenshot` | `url`, optional `output_path`, `width`, `height`, `question` | Saved PNG plus a native attachment or question-focused delegated description and capture-backend metadata |
 
 Ask naturally:
 
 ```text
 Use image_view to inspect ./design/home.webp. Describe the layout problem.
+```
+
+```text
+Look at the image I just attached and read the exact error message.
 ```
 
 ```text
@@ -134,7 +140,8 @@ Take a screenshot of http://localhost:3000 at 1440×900 and compare it with ~/Pi
 Delegation is enabled by default. When the active model declares
 `capabilities.input.image=false`, the plugin creates a temporary OpenCode
 session, sends the images to the configured vision model, and adds this block to
-the tool result:
+the tool result. When `question` is supplied, it is appended to the configured
+baseline prompt so the delegate answers the caller's exact visual question:
 
 ```text
 Vision via gpt-5.6-luna:
@@ -190,9 +197,11 @@ provider. `OPENCODE_SEE_DELEGATE_MODEL` provides the same one-string environment
 override; see [Usage](./docs/usage.md) for the remaining options and legacy
 split-field compatibility.
 
-Images outside the active worktree require OpenCode `external_directory`
-permission. Every image requires `read` permission. MIME types come from file
-signatures rather than filename extensions.
+Local images outside the active worktree require OpenCode `external_directory`
+permission, and every local path requires `read` permission. Images recovered
+from the current session need no new filesystem permission: the bytes are read
+only from that session's existing data-URL file parts. MIME types always come
+from byte signatures rather than filename extensions or attachment labels.
 
 Screenshots default to `<active project>/.opencode/screenshots`. CDP is tried
 first; ordinary Chromium/Chrome installs may fall back to the headless CLI.

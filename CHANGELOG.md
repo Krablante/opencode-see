@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 0.3.0 - 2026-08-20
+
+- Let `image_view` inspect the latest image batch or up to five newest unique
+  images already stored in the calling OpenCode session, including top-level
+  user file parts and completed tool attachments.
+- Add an optional per-call `question` to `image_view` and `screenshot`, appended
+  to the configured baseline prompt so text-only callers receive focused,
+  visibly grounded answers from the vision delegate.
+- Guide only text-only active models to use `image_view` immediately for opaque
+  image attachments instead of searching the filesystem or guessing, while
+  leaving native vision model prompts unchanged.
+- Keep session retrieval current-session-only, data-URL-only, signature-checked,
+  cacheless, and bounded to five returned images.
+
 ## 0.2.0 - 2026-08-20
 
 - Add configurable vision delegation through a temporary OpenCode session so

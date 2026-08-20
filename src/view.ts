@@ -10,14 +10,15 @@ import {
 
 export type ImageDimensions = { width: number; height: number }
 
-export type ViewedImage = ImageDimensions & {
-  path: string
+export type PreparedImage = ImageDimensions & {
   filename: string
   mime: SupportedImageMime
   size: number
   dataUrl: string
   willBeResizedByCore: boolean
 }
+
+export type ViewedImage = PreparedImage & { path: string }
 
 export type ViewImagesOptions = {
   paths: string[]
@@ -127,26 +128,32 @@ async function resolveExistingFile(value: string, directory: string, home?: stri
   }
 }
 
-async function loadImage(path: string): Promise<ViewedImage> {
-  const info = await stat(path)
-  if (!info.isFile()) throw new Error(`Image is not a regular file: ${path}`)
-  if (info.size === 0) throw new Error(`Image is empty: ${path}`)
-  const bytes = await readFile(path)
+export function prepareImage(bytes: Buffer, filename: string): PreparedImage {
+  if (bytes.length === 0) throw new Error(`Image is empty: ${filename}`)
   const mime = detectMime(bytes)
-  if (!mime) throw new Error(`Unsupported image format: ${path}. Use PNG, JPEG, WebP, or GIF.`)
+  if (!mime) throw new Error(`Unsupported image format: ${filename}. Use PNG, JPEG, WebP, or GIF.`)
   const dimensions = detectImageDimensions(bytes, mime)
   const base64 = bytes.toString("base64")
   return {
-    path,
-    filename: basename(path),
+    filename,
     mime,
-    size: info.size,
+    size: bytes.length,
     ...dimensions,
     dataUrl: `data:${mime};base64,${base64}`,
     willBeResizedByCore:
       dimensions.width > CORE_RESIZE_DIMENSION ||
       dimensions.height > CORE_RESIZE_DIMENSION ||
       base64.length > CORE_RESIZE_BASE64_BYTES,
+  }
+}
+
+async function loadImage(path: string): Promise<ViewedImage> {
+  const info = await stat(path)
+  if (!info.isFile()) throw new Error(`Image is not a regular file: ${path}`)
+  const bytes = await readFile(path)
+  return {
+    path,
+    ...prepareImage(bytes, basename(path)),
   }
 }
 

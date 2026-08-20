@@ -27,6 +27,14 @@ The OpenCode server owns provider authentication and transport; the plugin never
 reads those credentials. Treat the delegate configuration as a data-routing
 choice and use only a provider you trust with the selected images.
 
+When `image_view` uses `latest` or `session`, the plugin reads projected messages
+only for the calling OpenCode session ID. It accepts supported data-URL images
+from top-level user file parts and completed tool attachments, validates their
+byte signatures, and keeps no cache. It does not enumerate other sessions,
+search the filesystem, or fetch remote attachment URLs. Because those bytes are
+already held by the current OpenCode session, this path requests no additional
+filesystem permission.
+
 The `screenshot` tool starts a local browser process and allows only HTTP and
 HTTPS URLs. A page can still target services reachable from the local machine;
 review URLs before approving tool use in untrusted sessions.

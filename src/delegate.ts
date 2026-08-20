@@ -12,6 +12,7 @@ export async function describeImages(
   images: DelegateImage[],
   config: VisionDelegateConfig,
   signal: AbortSignal,
+  question?: string,
 ): Promise<string> {
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)])
   const created = await client.session.create({
@@ -27,7 +28,7 @@ export async function describeImages(
       body: {
         model: { providerID: config.providerID, modelID: config.modelID },
         parts: [
-          { type: "text", text: config.prompt },
+          { type: "text", text: delegatePrompt(config.prompt, question) },
           ...images.map((image) => ({
             type: "file" as const,
             mime: image.mime,
@@ -61,4 +62,9 @@ export async function describeImages(
       }
     }
   }
+}
+
+function delegatePrompt(prompt: string, question?: string): string {
+  if (!question) return prompt
+  return `${prompt}\n\nSpecific question from the parent model:\n${question}\n\nAnswer that question directly using visible evidence.`
 }

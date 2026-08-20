@@ -2,9 +2,12 @@
 
 ## Runtime characteristics
 
-`image_view` has no background process. It reads each file once and creates one
-base64 data URL. A call accepts at most five images. OpenCode owns downstream
-image resizing and provider transport.
+`image_view` has no background process. A local-path call reads each file once;
+a session-source call reads the calling session through the OpenCode SDK. Both
+produce at most five validated data-URL images. `latest` normally limits history
+to 64 messages and expands to the full current history only when that window is
+full but has no image. Explicit `session` lookup scans current history for the
+five newest unique images. OpenCode owns downstream resizing and transport.
 
 For a text-only active model, one temporary OpenCode session is created and
 prompted on the configured vision delegate. The request is bounded to 90 seconds
@@ -44,6 +47,12 @@ verify that `visionDelegate.enabled` is true and the configured provider/model
 is authenticated and supports image input. Delegation failures are returned as
 text and never replaced with a guessed description.
 
+If the image was attached in chat, call `image_view` without `paths` or with
+`source: "latest"`. A text-only model is instructed to do this automatically.
+Use `source: "session"` only when comparison across recent image batches is
+intentional. Session lookup accepts data URLs already stored by OpenCode; it does
+not fetch remote attachment URLs.
+
 ### Permission was requested for an unexpected directory
 
 The plugin authorizes canonical paths after resolving symlinks. Inspect the
@@ -74,8 +83,9 @@ npm run check
 npm run demos:check
 ```
 
-For live acceptance, call `image_view` on a known local image from both a
-text-only and a vision-capable model. The text-only result must contain `Vision
-via`, while the native vision result must contain an attachment and create no
-delegate session. Repeat with `screenshot` against a localhost page when its
-capture path changed.
+For live acceptance, attach an image directly to both a text-only and a
+vision-capable model. The text-only model should call `image_view` with the
+latest session source and receive a focused `Vision via` answer without first
+searching the filesystem. The native model should inspect the original
+attachment without a delegate call. Also verify explicit local paths,
+`source: "session"`, and `screenshot` with `question` when those paths change.

@@ -8,9 +8,35 @@
 }
 ```
 
-`paths` accepts one to five values. Each may be absolute, relative to the
-active OpenCode directory, or home-relative with `~/`. Supported signatures are
-PNG, JPEG, WebP, and GIF. PDF is intentionally unsupported.
+`paths` accepts one to five values. Each may be absolute, relative to the active
+OpenCode directory, or home-relative with `~/`. Supported signatures are PNG,
+JPEG, WebP, and GIF. PDF is intentionally unsupported.
+
+To inspect images already present in the current session, omit `paths`:
+
+```json
+{
+  "question": "What exact error message is visible?"
+}
+```
+
+This defaults to `source: "latest"`: the newest supported image batch from a
+top-level user attachment or a completed tool result. A multi-image batch keeps
+its original order. Use `source: "session"` to retrieve up to five newest unique
+supported images, with newer batches first:
+
+```json
+{
+  "source": "session",
+  "question": "How did the layout change across these images?"
+}
+```
+
+`paths` and `source` are mutually exclusive. Session lookup uses only the
+calling session's OpenCode message history. It does not search the filesystem,
+read another session, fetch remote URLs, or keep an image cache. Only data-URL
+user file parts and attachments on completed tool parts are accepted, and their
+bytes must have a supported signature.
 
 For a vision-capable active model, the result contains one file attachment per
 path and a text block like:
@@ -27,7 +53,8 @@ that fact but leaves resizing to the core.
 For a text-only active model, the same metadata is followed by `Vision via
 <modelID>:` and the configured delegate's description. The original attachments
 are omitted from that tool result so unsupported binary data is not sent to the
-text-only model.
+text-only model. Optional `question` is appended to the configured baseline
+delegate prompt and asks the vision model for a focused, evidence-based answer.
 
 ### Long sessions
 
@@ -48,7 +75,8 @@ did not compact. No configuration is required.
   "url": "http://localhost:3000",
   "output_path": "home.png",
   "width": 1440,
-  "height": 900
+  "height": 900,
+  "question": "Which controls fail contrast requirements?"
 }
 ```
 
@@ -56,6 +84,10 @@ Only HTTP and HTTPS URLs are accepted. `output_path` is relative to the
 configured screenshot directory and cannot escape it. `.png` is added when
 omitted. Width and height are positive integer viewport dimensions; CDP capture
 may include page content beyond the viewport.
+
+`question` has the same delegation behavior as in `image_view`. Native vision
+models receive the screenshot directly; a text-only caller receives the
+delegate's focused answer.
 
 ## Configuration
 
@@ -113,6 +145,11 @@ path with no delegated request. A text-only model causes the plugin to create a
 temporary session titled `opencode-see delegate`, prompt the configured vision
 model with the same data-URL image parts, collect assistant text, and delete the
 session when `deleteAfter` is true.
+
+Text-only models also receive one short system instruction telling them to call
+`image_view` immediately when an image attachment is present, use the latest
+session image when no path is known, and pass the exact visual question. Models
+that declare native image input do not receive this instruction.
 
 The model uses OpenCode's ordinary `provider/model` notation. Keep
 `opencode-go/gpt-5.6-luna` to spend OpenCode Go credits, or set
