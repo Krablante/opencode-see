@@ -6,6 +6,11 @@
 base64 data URL. A call accepts at most five images. OpenCode owns downstream
 image resizing and provider transport.
 
+For a text-only active model, one temporary OpenCode session is created and
+prompted on the configured vision delegate. The request is bounded to 90 seconds
+by default and the session is deleted afterward. Native vision models perform no
+extra model request.
+
 `screenshot` starts one browser process per call and closes it after capture.
 There is no persistent browser, queue, cache, worker, or service. The default
 timeout is 30 seconds and the default late-content budget is 2 seconds.
@@ -33,10 +38,11 @@ unless a project deliberately treats one as a fixture or documentation asset.
 
 ### The model did not see an image
 
-Confirm the tool result contains an attachment and that the active model
-declares image input support in OpenCode. This plugin cannot add vision to a
-text-only model. Check whether another transport layer removed unsupported
-parts.
+Check the active model capability in OpenCode. A vision model should receive an
+attachment. A text-only model should receive a `Vision via <modelID>:` block;
+verify that `visionDelegate.enabled` is true and the configured provider/model
+is authenticated and supports image input. Delegation failures are returned as
+text and never replaced with a guessed description.
 
 ### Permission was requested for an unexpected directory
 
@@ -68,6 +74,8 @@ npm run check
 npm run demos:check
 ```
 
-For a live acceptance test, load the plugin in OpenCode, call `image_view` on a
-known local image, then ask a vision-capable model to describe a distinctive
-visual fact. Repeat with `screenshot` against a localhost page.
+For live acceptance, call `image_view` on a known local image from both a
+text-only and a vision-capable model. The text-only result must contain `Vision
+via`, while the native vision result must contain an attachment and create no
+delegate session. Repeat with `screenshot` against a localhost page when its
+capture path changed.

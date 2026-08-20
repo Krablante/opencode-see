@@ -1,7 +1,7 @@
 {
   "name": "opencode-see",
-  "version": "0.1.0",
-  "description": "Show any local image to any vision-capable model in OpenCode.",
+  "version": "0.2.0",
+  "description": "Show local images to vision and text-only models in OpenCode.",
   "type": "module",
   "exports": "./src/index.ts",
   "files": [

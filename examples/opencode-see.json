@@ -6,5 +6,13 @@
     "height": 900
   },
   "virtualTimeBudgetMs": 2000,
-  "screenshotTimeoutMs": 30000
+  "screenshotTimeoutMs": 30000,
+  "visionDelegate": {
+    "enabled": true,
+    "providerID": "opencode-go",
+    "modelID": "gpt-5.6-luna",
+    "prompt": "Опиши содержимое каждой приложенной картинки подробно и по делу.",
+    "timeoutMs": 90000,
+    "deleteAfter": true
+  }
 }

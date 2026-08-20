@@ -1,7 +1,8 @@
 # Overview
 
-`opencode-see` gives a vision-capable model access to an image that already
-exists on the OpenCode host. It solves two adjacent jobs:
+`opencode-see` gives an active OpenCode model access to an image that already
+exists on the host, directly for vision models or through a configured vision
+delegate for text-only models. It solves two adjacent jobs:
 
 - `image_view` reads an existing PNG, JPEG, WebP, or GIF;
 - `screenshot` captures an HTTP/HTTPS page to PNG, then returns that PNG.
@@ -13,14 +14,15 @@ There are three deliberately separate levels:
 2. **OpenCode attachment.** The plugin returns `{ type: "file", mime, url }`
    with a base64 data URL and useful text metadata.
 3. **Model input.** OpenCode's active provider transport converts that standard
-   attachment into the image-input shape supported by the current model.
+   attachment into native image input, or a temporary OpenCode session sends it
+   to the configured vision delegate and returns the resulting text.
 
-The plugin owns only level one and the standard boundary into level two. It
-does not select, configure, or call the provider or model that receives the
-request. If a compatible host hides an active tool attachment behind completed
-remote compaction, the plugin can use that marker's remote provider ID to
-restore the same stored attachment for the immediate continuation without
-interpreting or caching it.
+The plugin owns level one and the routing decision at the standard attachment
+boundary. It never owns provider credentials or calls a provider API directly;
+delegation uses the existing OpenCode SDK client and server authentication. If a
+compatible host hides an active tool attachment behind completed remote
+compaction, the plugin can restore the same stored attachment for the immediate
+continuation without interpreting or caching it.
 
 ## Intended use
 

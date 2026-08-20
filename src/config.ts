@@ -2,6 +2,12 @@ import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { isAbsolute, join, resolve } from "node:path"
 import {
+  DEFAULT_DELEGATE_DELETE_AFTER,
+  DEFAULT_DELEGATE_ENABLED,
+  DEFAULT_DELEGATE_MODEL_ID,
+  DEFAULT_DELEGATE_PROMPT,
+  DEFAULT_DELEGATE_PROVIDER_ID,
+  DEFAULT_DELEGATE_TIMEOUT_MS,
   DEFAULT_SCREENSHOT_DIR,
   DEFAULT_SCREENSHOT_TIMEOUT_MS,
   DEFAULT_VIEWPORT,
@@ -18,7 +24,17 @@ export type SeeConfig = {
   viewport: { width: number; height: number }
   virtualTimeBudgetMs: number
   screenshotTimeoutMs: number
+  visionDelegate: VisionDelegateConfig
   configPath: string
+}
+
+export type VisionDelegateConfig = {
+  enabled: boolean
+  providerID: string
+  modelID: string
+  prompt: string
+  timeoutMs: number
+  deleteAfter: boolean
 }
 
 type ConfigFile = {
@@ -27,6 +43,7 @@ type ConfigFile = {
   viewport?: { width?: unknown; height?: unknown } | unknown
   virtualTimeBudgetMs?: unknown
   screenshotTimeoutMs?: unknown
+  visionDelegate?: unknown
 }
 
 export function defaultConfigPath(
@@ -63,6 +80,17 @@ function positiveInteger(value: unknown, fallback: number, label: string): numbe
   return Number(number)
 }
 
+function booleanValue(value: unknown, fallback: boolean, label: string): boolean {
+  if (value === undefined) return fallback
+  if (typeof value === "boolean") return value
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase()
+    if (["1", "true", "yes", "on"].includes(normalized)) return true
+    if (["0", "false", "no", "off"].includes(normalized)) return false
+  }
+  throw new Error(`${label} must be a boolean`)
+}
+
 export async function loadConfig(
   directory: string,
   env: NodeJS.ProcessEnv = process.env,
@@ -87,6 +115,10 @@ export async function loadConfig(
     file.viewport && typeof file.viewport === "object" && !Array.isArray(file.viewport)
       ? file.viewport
       : {}
+  const visionDelegate: Record<string, unknown> =
+    file.visionDelegate && typeof file.visionDelegate === "object" && !Array.isArray(file.visionDelegate)
+      ? file.visionDelegate as Record<string, unknown>
+      : {}
   return {
     screenshotDirectory,
     screenshotRoot,
@@ -105,6 +137,35 @@ export async function loadConfig(
       DEFAULT_SCREENSHOT_TIMEOUT_MS,
       "screenshotTimeoutMs",
     ),
+    visionDelegate: {
+      enabled: booleanValue(
+        env.OPENCODE_SEE_DELEGATE_ENABLED ?? visionDelegate.enabled,
+        DEFAULT_DELEGATE_ENABLED,
+        "visionDelegate.enabled",
+      ),
+      providerID:
+        nonEmptyString(env.OPENCODE_SEE_DELEGATE_PROVIDER_ID, "OPENCODE_SEE_DELEGATE_PROVIDER_ID") ??
+        nonEmptyString(visionDelegate.providerID, `visionDelegate.providerID in ${configPath}`) ??
+        DEFAULT_DELEGATE_PROVIDER_ID,
+      modelID:
+        nonEmptyString(env.OPENCODE_SEE_DELEGATE_MODEL_ID, "OPENCODE_SEE_DELEGATE_MODEL_ID") ??
+        nonEmptyString(visionDelegate.modelID, `visionDelegate.modelID in ${configPath}`) ??
+        DEFAULT_DELEGATE_MODEL_ID,
+      prompt:
+        nonEmptyString(env.OPENCODE_SEE_DELEGATE_PROMPT, "OPENCODE_SEE_DELEGATE_PROMPT") ??
+        nonEmptyString(visionDelegate.prompt, `visionDelegate.prompt in ${configPath}`) ??
+        DEFAULT_DELEGATE_PROMPT,
+      timeoutMs: positiveInteger(
+        env.OPENCODE_SEE_DELEGATE_TIMEOUT_MS ?? visionDelegate.timeoutMs,
+        DEFAULT_DELEGATE_TIMEOUT_MS,
+        "visionDelegate.timeoutMs",
+      ),
+      deleteAfter: booleanValue(
+        env.OPENCODE_SEE_DELEGATE_DELETE_AFTER ?? visionDelegate.deleteAfter,
+        DEFAULT_DELEGATE_DELETE_AFTER,
+        "visionDelegate.deleteAfter",
+      ),
+    },
     configPath,
   }
 }

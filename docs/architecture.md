@@ -10,25 +10,32 @@ path ── resolve + authorize ──> bytes ──> data:image/...;base64,...
                                   OpenCode file attachment
                                                │
                                                ▼
-                                  active provider transport
-                                               │
-                                               ▼
-                                     vision model input
+                                   capability decision
+                                      │          │
+                                 image=true  image=false
+                                      │          │
+                              active transport  temporary OpenCode session
+                                      │          │
+                              vision input   delegate text result
 ```
 
-## Why there is no provider code
+## Why there is still no provider code
 
 The active OpenCode session already owns provider authentication, capability
 selection, request conversion, retries, and model choice. Reimplementing any of
 that in this plugin would make it provider-specific and create a second secret
 boundary. `opencode-see` therefore has no `auth` plugin hook and never calls a
-model API.
+provider API directly. Vision delegation asks the existing OpenCode SDK client
+to run a temporary session; the server applies its normal authentication,
+transport, retries, and model configuration.
 
 The only network activity initiated by this repository is:
 
 - Chromium loading the URL explicitly passed to `screenshot`;
 - local loopback HTTP and WebSocket traffic used to control that Chromium
   process through the Chrome DevTools Protocol;
+- an OpenCode SDK request that creates, prompts, and optionally deletes a
+  temporary vision session when the active model is text-only;
 - one bounded local OpenCode session-history read when a completed remote
   mid-turn compaction has hidden an active image tool result.
 
@@ -50,6 +57,19 @@ background task, or persistent replay state. Ordinary OpenCode, local
 compaction, legacy transports, other providers, uncompacted turns, and completed
 continuations return before the session read. Provider retries rebuild the same
 projection until one normal assistant continuation completes.
+
+## Vision delegation boundary
+
+The `chat.params` hook records the active model ID and declared image capability
+for each session. A tool call first reads that cache and falls back to the live
+session plus provider catalog when needed. Native vision returns the original
+attachments unchanged. Text-only sessions either run the configured delegate or
+receive an explicit unsupported-model message when delegation is disabled.
+
+Delegate requests are bounded by the configured timeout and the calling tool's
+abort signal. They use ordinary file parts in a temporary session, return only
+assistant text to the text-only caller, and delete that session by default. The
+plugin keeps no provider secret and no image-description cache.
 
 ## Image path boundary
 

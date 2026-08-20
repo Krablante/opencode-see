@@ -12,6 +12,14 @@ const config: SeeConfig = {
   viewport: { width: 800, height: 600 },
   virtualTimeBudgetMs: 1,
   screenshotTimeoutMs: 100,
+  visionDelegate: {
+    enabled: true,
+    providerID: "opencode-go",
+    modelID: "gpt-5.6-luna",
+    prompt: "Describe the image.",
+    timeoutMs: 100,
+    deleteAfter: true,
+  },
   configPath: "/tmp/opencode-see.json",
 }
 

@@ -6,15 +6,15 @@
   <a href="./README.md">🇬🇧 <strong>English</strong></a> · <a href="./README.ru.md">🇷🇺 Русский</a>
 </p>
 
-<p align="center">No upload service. No second model. No fork patch.<br>
-One local path, one standard attachment, and the vision model you already use.</p>
+<p align="center">No upload service. No fork patch. No plugin-owned API key.<br>
+Native attachments for vision models; a configurable vision delegate for text-only models.</p>
 
 <p align="center">
   <img alt="opencode-see flow: path, attachment, input image, model" src="./assets/stickers-en.svg" width="720">
 </p>
 
 <p align="center">
-  <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-e85d75?style=flat-square">
+  <img alt="Version 0.2.0" src="https://img.shields.io/badge/version-0.2.0-e85d75?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-e85d75?style=flat-square">
   <img alt="OpenCode plugin" src="https://img.shields.io/badge/OpenCode-plugin-e85d75?style=flat-square">
 </p>
@@ -36,26 +36,34 @@ missing was the small, boring bridge from “this file on my machine” to that
 existing path.
 
 `opencode-see` adds the bridge. It reads a local PNG, JPEG, WebP, or GIF, asks
-OpenCode for the normal file permissions, and returns a standard attachment.
-It can also ask a local Chromium installation to capture a web page first.
+OpenCode for the normal file permissions, and returns a standard attachment to
+vision-capable models. For text-only models it can ask a configured vision model
+to describe the same image and return that description as text. It can also ask
+a local Chromium installation to capture a web page first.
 
 ## 🪄 The whole trick
 
-The plugin has no provider client, API key, OAuth flow, or model routing. The
-active OpenCode transport converts its attachment into the image input expected
-by the active model.
+The plugin has no provider client, API key, or OAuth flow. OpenCode owns both
+provider authentication and model transport. The plugin checks the active
+model's declared capabilities: native vision gets the original attachment,
+while a text-only model can receive text from a short-lived OpenCode session on
+the configured vision delegate.
 
 ```mermaid
 flowchart LR
   P[local path] --> T[image_view]
-  T --> A[file attachment]
-  A --> I[input_image]
-  I --> M[active vision model]
+  T --> C{active model supports images?}
+  C -->|yes| A[file attachment]
+  A --> M[active vision model]
+  C -->|no| D[temporary vision session]
+  D --> X[text description]
+  X --> N[active text-only model]
 ```
 
-That makes the plugin model-agnostic. It works with any provider/model
-combination whose OpenCode capability declares image input. A ChatGPT OAuth
-session can carry the same attachment without giving this plugin an API key.
+That keeps the plugin provider-agnostic. It works directly with any model whose
+OpenCode capability declares image input, and text-only models can use any
+configured vision delegate available to the same OpenCode server. The plugin
+never reads or stores provider credentials.
 
 If a compatible host performs remote mid-turn compaction before the model sees
 a tool attachment, the plugin restores the latest image batch from session
@@ -108,8 +116,8 @@ when you want this repository; use the GitHub clone above.
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `image_view` | `paths` — 1–5 absolute, project-relative, or `~/` paths | Image attachments plus path, MIME, bytes, dimensions, and core-resize metadata |
-| `screenshot` | `url`, optional `output_path`, `width`, `height` | Saved PNG plus an image attachment and capture-backend metadata |
+| `image_view` | `paths` — 1–5 absolute, project-relative, or `~/` paths | Image attachments or a delegated description, plus path, MIME, bytes, dimensions, and core-resize metadata |
+| `screenshot` | `url`, optional `output_path`, `width`, `height` | Saved PNG plus an image attachment or delegated description and capture-backend metadata |
 
 Ask naturally:
 
@@ -120,6 +128,40 @@ Use image_view to inspect ./design/home.webp. Describe the layout problem.
 ```text
 Take a screenshot of http://localhost:3000 at 1440×900 and compare it with ~/Pictures/reference.png.
 ```
+
+## 🔭 Vision delegation for text-only models
+
+Delegation is enabled by default. When the active model declares
+`capabilities.input.image=false`, the plugin creates a temporary OpenCode
+session, sends the images to the configured vision model, and adds this block to
+the tool result:
+
+```text
+Vision via gpt-5.6-luna:
+<description returned by the vision model>
+```
+
+Configure it in `opencode-see.json`:
+
+```json
+{
+  "visionDelegate": {
+    "enabled": true,
+    "providerID": "opencode-go",
+    "modelID": "gpt-5.6-luna",
+    "prompt": "Опиши содержимое каждой приложенной картинки подробно и по делу.",
+    "timeoutMs": 90000,
+    "deleteAfter": true
+  }
+}
+```
+
+The OpenCode server performs the delegated request with its existing provider
+authentication. Set `enabled` to `false` to return an explicit unsupported-model
+message instead. Each delegated call may consume credits from the configured
+provider. Environment overrides use the
+`OPENCODE_SEE_DELEGATE_ENABLED`, `_PROVIDER_ID`, `_MODEL_ID`, `_PROMPT`,
+`_TIMEOUT_MS`, and `_DELETE_AFTER` suffixes; see [Usage](./docs/usage.md).
 
 Images outside the active worktree require OpenCode `external_directory`
 permission. Every image requires `read` permission. MIME types come from file
@@ -134,9 +176,9 @@ See [Usage](./docs/usage.md) for configuration and every environment override.
 
 ## 🚫 What it refuses to become
 
-- not OCR — the active model decides how to interpret pixels
+- not OCR — the active or delegated vision model decides how to interpret pixels
 - not image hosting — data stays local until OpenCode sends the active request
-- not a provider client — no auth and no API calls
+- not a provider client — no direct provider auth or provider API calls
 - not a fork patch — upstream OpenCode and OpenCodez load the same plugin
 - not image RAG — no embeddings, index, cache, or background process
 - not a PDF reader — only PNG, JPEG, WebP, and GIF are accepted

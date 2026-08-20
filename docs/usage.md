@@ -12,7 +12,8 @@
 active OpenCode directory, or home-relative with `~/`. Supported signatures are
 PNG, JPEG, WebP, and GIF. PDF is intentionally unsupported.
 
-The result contains one file attachment per path and a text block like:
+For a vision-capable active model, the result contains one file attachment per
+path and a text block like:
 
 ```text
 Image metadata:
@@ -22,6 +23,11 @@ Image metadata:
 `core_resize=yes` means the attachment exceeds the known OpenCode image resize
 threshold of 2000 pixels on one side or 5 MiB of base64 data. The plugin reports
 that fact but leaves resizing to the core.
+
+For a text-only active model, the same metadata is followed by `Vision via
+<modelID>:` and the configured delegate's description. The original attachments
+are omitted from that tool result so unsupported binary data is not sent to the
+text-only model.
 
 ### Long sessions
 
@@ -61,7 +67,15 @@ Create `opencode-see.json` in the active OpenCode config directory:
   "chromiumPath": "/usr/bin/chromium",
   "viewport": { "width": 1440, "height": 900 },
   "virtualTimeBudgetMs": 2000,
-  "screenshotTimeoutMs": 30000
+  "screenshotTimeoutMs": 30000,
+  "visionDelegate": {
+    "enabled": true,
+    "providerID": "opencode-go",
+    "modelID": "gpt-5.6-luna",
+    "prompt": "Опиши содержимое каждой приложенной картинки подробно и по делу.",
+    "timeoutMs": 90000,
+    "deleteAfter": true
+  }
 }
 ```
 
@@ -86,6 +100,25 @@ Environment overrides:
 | `OPENCODE_SEE_VIEWPORT_HEIGHT` | `viewport.height` |
 | `OPENCODE_SEE_VIRTUAL_TIME_BUDGET_MS` | `virtualTimeBudgetMs` |
 | `OPENCODE_SEE_SCREENSHOT_TIMEOUT_MS` | `screenshotTimeoutMs` |
+| `OPENCODE_SEE_DELEGATE_ENABLED` | `visionDelegate.enabled` |
+| `OPENCODE_SEE_DELEGATE_PROVIDER_ID` | `visionDelegate.providerID` |
+| `OPENCODE_SEE_DELEGATE_MODEL_ID` | `visionDelegate.modelID` |
+| `OPENCODE_SEE_DELEGATE_PROMPT` | `visionDelegate.prompt` |
+| `OPENCODE_SEE_DELEGATE_TIMEOUT_MS` | `visionDelegate.timeoutMs` |
+| `OPENCODE_SEE_DELEGATE_DELETE_AFTER` | `visionDelegate.deleteAfter` |
+
+## Vision delegation for text-only models
+
+The delegate is enabled by default. OpenCode's `chat.params` model capability is
+cached per active session. Native vision models keep the original attachment
+path with no delegated request. A text-only model causes the plugin to create a
+temporary session titled `opencode-see delegate`, prompt the configured vision
+model with the same data-URL image parts, collect assistant text, and delete the
+session when `deleteAfter` is true.
+
+The timeout covers session creation and the model prompt. Cancellation of the
+calling tool also cancels the delegated request. Authentication remains owned by
+the OpenCode server; `opencode-see` has no provider key or OAuth flow.
 
 ## Prompt examples
 

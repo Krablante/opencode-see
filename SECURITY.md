@@ -19,7 +19,13 @@ security advisory flow for this repository and include:
 OpenCode plugins run with the same operating-system identity as OpenCode.
 Install only code you trust. `opencode-see` asks OpenCode for `read` permission
 for each image and `external_directory` permission outside the worktree. It has
-no provider credential loader and performs no model API calls.
+no provider credential loader and performs no direct provider API calls.
+
+When vision delegation is enabled for a text-only active model, the plugin sends
+the image to the configured vision model through a temporary OpenCode session.
+The OpenCode server owns provider authentication and transport; the plugin never
+reads those credentials. Treat the delegate configuration as a data-routing
+choice and use only a provider you trust with the selected images.
 
 The `screenshot` tool starts a local browser process and allows only HTTP and
 HTTPS URLs. A page can still target services reachable from the local machine;

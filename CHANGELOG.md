@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 0.2.0 - 2026-08-20
+
+- Add configurable vision delegation through a temporary OpenCode session so
+  text-only active models receive grounded image descriptions without plugin
+  credentials or a core patch.
+- Preserve the zero-overhead native attachment path for models that declare
+  image input support, and report explicit errors when delegation is disabled or
+  fails.
+- Add active-model capability tracking, SDK session cleanup, bounded timeouts,
+  environment overrides, unit coverage, and English/Russian documentation.
 - Restore the latest image tool batch for the immediate continuation after
   compatible remote mid-turn compaction, without a separate provider or config
   lookup, caching, persistent state, or changes to ordinary OpenCode and local
