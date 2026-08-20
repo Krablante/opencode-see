@@ -13,7 +13,7 @@ jobs:
   blocked:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Refuse npm publication
         run: |
           echo "This project is distributed through GitHub only." >&2
