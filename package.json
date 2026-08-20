@@ -1,0 +1,58 @@
+{
+  "name": "opencode-see",
+  "version": "0.1.0",
+  "description": "Show any local image to any vision-capable model in OpenCode.",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "files": [
+    "src",
+    "examples",
+    "assets",
+    "docs",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "README.ru.md",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "check": "npm run typecheck && npm test",
+    "demos": "node --import tsx scripts/generate-demos.mjs",
+    "demos:check": "node --import tsx scripts/generate-demos.mjs --check",
+    "test": "tsx --test test/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "opencode",
+    "vision",
+    "image",
+    "screenshot",
+    "plugin"
+  ],
+  "author": "Krablante",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Krablante/opencode-see.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Krablante/opencode-see/issues"
+  },
+  "homepage": "https://github.com/Krablante/opencode-see#readme",
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.2.25"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

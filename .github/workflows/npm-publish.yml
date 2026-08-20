@@ -1,0 +1,29 @@
+name: Publish to npm
+
+# The project is distributed through GitHub only today. This manual workflow is
+# retained for a future explicit npm release; repository tags do not publish.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact package version to publish
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: test "$(node -p "require('./package.json').version")" = "${{ inputs.version }}"
+      - run: npm ci
+      - run: npm run check
+      - run: npm publish --provenance --access public

@@ -1,0 +1,10 @@
+{
+  "screenshotDirectory": ".opencode/screenshots",
+  "chromiumPath": "/usr/bin/chromium",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "virtualTimeBudgetMs": 2000,
+  "screenshotTimeoutMs": 30000
+}

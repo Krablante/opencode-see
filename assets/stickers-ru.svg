@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 260" role="img" aria-labelledby="title desc">
+  <title id="title">Схема передачи изображения opencode-see</title>
+  <desc id="desc">Три стикера: локальный путь, стандартный attachment, активная vision-модель.</desc>
+  <rect width="960" height="260" rx="34" fill="#0d1117"/>
+  <g font-family="DejaVu Sans Mono, ui-monospace, monospace" text-anchor="middle">
+    <g transform="rotate(-3 172 130)">
+      <rect x="38" y="58" width="270" height="142" rx="28" fill="#f5eee6" stroke="#e85d75" stroke-width="6"/>
+      <text x="173" y="119" font-size="25" fill="#171c24">ЛОКАЛЬНЫЙ ПУТЬ</text>
+      <text x="173" y="159" font-size="18" fill="#697386">png · jpg · webp · gif</text>
+    </g>
+    <path d="M318 130h46" stroke="#e85d75" stroke-width="8" stroke-linecap="round"/>
+    <path d="m353 114 18 16-18 16" fill="none" stroke="#e85d75" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="rotate(2 484 130)">
+      <rect x="370" y="45" width="270" height="168" rx="28" fill="#e85d75"/>
+      <text x="505" y="111" font-size="25" fill="#0d1117">ATTACHMENT</text>
+      <text x="505" y="151" font-size="18" fill="#31151c">data:image/...;base64</text>
+      <text x="505" y="181" font-size="16" fill="#31151c">контракт OpenCode</text>
+    </g>
+    <path d="M650 130h46" stroke="#e85d75" stroke-width="8" stroke-linecap="round"/>
+    <path d="m685 114 18 16-18 16" fill="none" stroke="#e85d75" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="rotate(-2 814 130)">
+      <rect x="700" y="58" width="224" height="142" rx="28" fill="#171c24" stroke="#f5eee6" stroke-width="4"/>
+      <text x="812" y="119" font-size="23" fill="#f5eee6">VISION-МОДЕЛЬ</text>
+      <text x="812" y="159" font-size="17" fill="#e85d75">уже активная</text>
+    </g>
+  </g>
+</svg>
