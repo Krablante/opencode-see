@@ -93,8 +93,10 @@ Add the plugin source URL to `~/.config/opencode/opencode.jsonc`:
 Use an absolute `file://` URL. Restart OpenCode after changing its configuration.
 OpenCodez uses its own config root but the same plugin contract.
 
-The package contains public npm metadata for future distribution, but the
-maintainer does not currently publish it to npm.
+The package contains public npm metadata because OpenCode plugins are Node
+packages, but this project does **not** publish to npm. The `opencode-see` name
+on npm is currently owned by an unrelated project. Do not install that package
+when you want this repository; use the GitHub clone above.
 
 ## ⌨️ The tools you need
 
