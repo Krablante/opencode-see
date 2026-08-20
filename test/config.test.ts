@@ -119,18 +119,18 @@ describe("config", () => {
     assert.equal(config.visionDelegate.modelID, "legacy-model")
   })
 
-  it("loads a one-string ChatGPT OAuth delegate from the config file", async () => {
-    const root = await mkdtemp(join(tmpdir(), "opencode-see-oauth-model-"))
+  it("loads an arbitrary one-string provider/model reference from the config file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "opencode-see-custom-model-"))
     roots.push(root)
     const path = join(root, "opencode-see.json")
     await writeFile(path, JSON.stringify({
-      visionDelegate: { model: "openai/gpt-5.6-luna" },
+      visionDelegate: { model: "custom-provider/family/vision-v2" },
     }))
 
     const config = await loadConfig("/work", { OPENCODE_SEE_CONFIG: path }, "/home/test", "linux")
-    assert.equal(config.visionDelegate.model, "openai/gpt-5.6-luna")
-    assert.equal(config.visionDelegate.providerID, "openai")
-    assert.equal(config.visionDelegate.modelID, "gpt-5.6-luna")
+    assert.equal(config.visionDelegate.model, "custom-provider/family/vision-v2")
+    assert.equal(config.visionDelegate.providerID, "custom-provider")
+    assert.equal(config.visionDelegate.modelID, "family/vision-v2")
   })
 
   it("rejects delegate models without a provider prefix", async () => {

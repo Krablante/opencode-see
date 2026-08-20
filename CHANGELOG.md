@@ -13,8 +13,9 @@ All notable changes to this project are documented here.
   image input support, and report explicit errors when delegation is disabled or
   fails.
 - Add active-model capability tracking, SDK session cleanup, bounded timeouts,
-  a one-string `provider/model` delegate switch with legacy compatibility,
-  environment overrides, unit coverage, and English/Russian documentation.
+  an unrestricted one-string `provider/model` delegate switch with legacy
+  compatibility, environment overrides, unit coverage, and English/Russian
+  documentation.
 - Restore the latest image tool batch for the immediate continuation after
   compatible remote mid-turn compaction, without a separate provider or config
   lookup, caching, persistent state, or changes to ordinary OpenCode and local

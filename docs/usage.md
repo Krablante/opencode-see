@@ -117,10 +117,20 @@ session when `deleteAfter` is true.
 The model uses OpenCode's ordinary `provider/model` notation. Keep
 `opencode-go/gpt-5.6-luna` to spend OpenCode Go credits, or set
 `openai/gpt-5.6-luna` to use the ChatGPT OAuth session already authenticated in
-OpenCode. No credential is copied into the plugin. The older `providerID` and
-`modelID` config fields and their `OPENCODE_SEE_DELEGATE_PROVIDER_ID` and
-`OPENCODE_SEE_DELEGATE_MODEL_ID` overrides remain accepted for compatibility,
-but new configurations should use `model`.
+OpenCode. These are examples only: there is no provider or model allowlist.
+Any exact reference from `opencode models` (or `opencodez models`) is accepted,
+including custom providers registered in OpenCode configuration or by another
+plugin. Model IDs may contain additional `/` characters; the first segment is
+always the provider ID and the rest is passed through as the model ID.
+
+The selected provider must already be authenticated and the selected model must
+support image input. No credential is copied into `opencode-see`, and the plugin
+does not test or replace the user's selection ahead of time. Provider, auth, or
+capability errors are returned as explicit delegation failures. The older
+`providerID` and `modelID` config fields and their
+`OPENCODE_SEE_DELEGATE_PROVIDER_ID` and `OPENCODE_SEE_DELEGATE_MODEL_ID`
+overrides remain accepted for compatibility, but new configurations should use
+`model`.
 
 The timeout covers session creation and the model prompt. Cancellation of the
 calling tool also cancels the delegated request. Authentication remains owned by

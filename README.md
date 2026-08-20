@@ -165,6 +165,24 @@ To use an existing ChatGPT OAuth session instead, change that one model string:
 }
 ```
 
+Those are examples, not a provider allowlist. `model` accepts any OpenCode
+`provider/model` reference, including providers added by user configuration or
+another plugin:
+
+```json
+{
+  "visionDelegate": {
+    "model": "your-provider/your-vision-model"
+  }
+}
+```
+
+Use the exact ID shown by `opencode models` (or `opencodez models`). The selected
+provider must already be authenticated in OpenCode and the model must accept
+image input. The plugin does not validate accounts, restrict providers, or
+silently substitute another model; an invalid selection is returned as an
+explicit delegation failure.
+
 The OpenCode server performs the delegated request with its existing provider
 authentication. Set `enabled` to `false` to return an explicit unsupported-model
 message instead. Each delegated call may consume credits from the configured
