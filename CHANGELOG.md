@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 0.4.0 - 2026-08-22
+
+- Add `visionDelegate.forceFor`, an exact `provider/model` list that routes
+  selected native-vision callers through the configured delegate while keeping
+  automatic delegation for text-only models.
+- Return delegated text without image attachments for forced callers, allowing
+  operators to avoid provider-specific attachment handling without changing
+  OpenCode or OpenCodez core.
+- Keep the default path unchanged and allocation-light: routing adds one exact
+  list check, and native vision still returns the original attachment without an
+  extra model request.
+
 ## 0.3.0 - 2026-08-20
 
 - Let `image_view` inspect the latest image batch or up to five newest unique

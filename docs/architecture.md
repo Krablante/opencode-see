@@ -11,13 +11,13 @@ session history ── current ID only ─┘                         │
                                                  OpenCode file attachment
                                                │
                                                ▼
-                                   capability decision
-                                      │          │
-                                 image=true  image=false
-                                      │          │
-                              active transport  temporary OpenCode session
-                                      │          │
-                              vision input   delegate text result
+                              capability + exact route decision
+                                  │                    │
+                         native image route     text-only or forceFor
+                                  │                    │
+                          active transport      temporary OpenCode session
+                                  │                    │
+                           vision input          delegate text result
 ```
 
 ## Why there is still no provider code
@@ -36,7 +36,8 @@ The only network activity initiated by this repository is:
 - local loopback HTTP and WebSocket traffic used to control that Chromium
   process through the Chrome DevTools Protocol;
 - an OpenCode SDK request that creates, prompts, and optionally deletes a
-  temporary vision session when the active model is text-only;
+  temporary vision session when the active model is text-only or explicitly
+  listed in `visionDelegate.forceFor`;
 - a current-session OpenCode history read when `image_view` uses `latest` or
   `session` as its source;
 - one bounded local OpenCode session-history read when a completed remote
@@ -66,16 +67,20 @@ projection until one normal assistant continuation completes.
 The `chat.params` hook records the active model ID and declared image capability
 for each session. A tool call first reads that cache and falls back to the live
 session plus provider catalog when needed. Native vision returns the original
-attachments unchanged. Text-only sessions either run the configured delegate or
-receive an explicit unsupported-model message when delegation is disabled.
+attachments unchanged unless the exact active `provider/model` reference is in
+the configured `forceFor` list. Text-only and explicitly forced sessions either
+run the configured delegate or receive an explicit routing message when
+delegation is disabled.
 
 Delegate requests are bounded by the configured timeout and the calling tool's
 abort signal. They use ordinary file parts in a temporary session, return only
-assistant text to the text-only caller, and delete that session by default. The
-plugin keeps no provider secret and no image-description cache. A per-call
-`question` supplements rather than replaces the configured baseline delegate
-prompt. Only models that explicitly declare `input.image=false` receive the
-system hint that routes otherwise opaque image attachments to `image_view`.
+assistant text to the caller, and delete that session by default. The plugin
+keeps no provider secret and no image-description cache. A per-call `question`
+supplements rather than replaces the configured baseline delegate prompt. Exact
+matching keeps routing predictable and adds no provider-specific branch. Only
+models that explicitly declare `input.image=false` receive the system hint that
+routes otherwise opaque user attachments to `image_view`; `forceFor` changes
+tool results and does not rewrite direct user attachments.
 
 ## Session image boundary
 

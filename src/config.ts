@@ -32,6 +32,7 @@ export type VisionDelegateConfig = {
   model: string
   providerID: string
   modelID: string
+  forceFor?: string[]
   prompt: string
   timeoutMs: number
   deleteAfter: boolean
@@ -106,6 +107,12 @@ function modelReference(value: unknown, fallback: string, label: string): {
     providerID: model.slice(0, separator),
     modelID: model.slice(separator + 1),
   }
+}
+
+function modelReferences(value: unknown, label: string): string[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array of provider/model strings`)
+  return [...new Set(value.map((item, index) => modelReference(item, "", `${label}[${index}]`).model))]
 }
 
 export async function loadConfig(
@@ -186,6 +193,9 @@ export async function loadConfig(
       model: `${delegateProviderID}/${delegateModelID}`,
       providerID: delegateProviderID,
       modelID: delegateModelID,
+      ...(visionDelegate.forceFor === undefined
+        ? {}
+        : { forceFor: modelReferences(visionDelegate.forceFor, `visionDelegate.forceFor in ${configPath}`) }),
       prompt:
         nonEmptyString(env.OPENCODE_SEE_DELEGATE_PROMPT, "OPENCODE_SEE_DELEGATE_PROMPT") ??
         nonEmptyString(visionDelegate.prompt, `visionDelegate.prompt in ${configPath}`) ??

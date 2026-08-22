@@ -23,7 +23,9 @@ export async function createVisualResult(input: {
     input.context.sessionID,
     input.config.visionDelegate,
   )
-  if (capability.image) {
+  const activeModel = `${capability.providerID}/${capability.modelID}`
+  const forced = input.config.visionDelegate.forceFor?.includes(activeModel) === true
+  if (capability.image && !forced) {
     return {
       output: input.metadata,
       attachments: input.images.map((image) => ({
@@ -37,7 +39,9 @@ export async function createVisualResult(input: {
 
   if (!input.config.visionDelegate.enabled) {
     return {
-      output: `${input.metadata}\n\nVision unavailable: the active model does not support image input. Enable visionDelegate in opencode-see.json.`,
+      output: forced
+        ? `${input.metadata}\n\nVision delegation is required because ${activeModel} is listed in visionDelegate.forceFor, but visionDelegate.enabled is false.`
+        : `${input.metadata}\n\nVision unavailable: the active model does not support image input. Enable visionDelegate in opencode-see.json.`,
       attachments: [],
     }
   }

@@ -2,8 +2,8 @@
 
 `opencode-see` gives an active OpenCode model access to an image that already
 exists on the host or in the current session, directly for vision models or
-through a configured vision delegate for text-only models. It solves two
-adjacent jobs:
+through a configured vision delegate for text-only and explicitly selected
+models. It solves two adjacent jobs:
 
 - `image_view` reads an existing PNG, JPEG, WebP, or GIF from a local path or
   the current session;
@@ -14,11 +14,11 @@ There are three deliberately separate levels:
 1. **Image source.** The plugin resolves and authorizes a local path, or reads
    data-URL file parts from the calling session, then identifies the image from
    its byte signature.
-2. **OpenCode attachment.** The plugin returns `{ type: "file", mime, url }`
-   with a base64 data URL and useful text metadata.
-3. **Model input.** OpenCode's active provider transport converts that standard
-   attachment into native image input, or a temporary OpenCode session sends it
-   to the configured vision delegate and returns the resulting text.
+2. **Routing input.** The plugin represents validated bytes as
+   `{ type: "file", mime, url }` with a base64 data URL and useful text metadata.
+3. **Model delivery.** The plugin either returns that standard attachment to the
+   active provider transport or sends it through a temporary OpenCode session on
+   the configured vision delegate and returns the resulting text.
 
 The plugin owns level one and the routing decision at the standard attachment
 boundary. It never owns provider credentials or calls a provider API directly;

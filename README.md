@@ -7,14 +7,14 @@
 </p>
 
 <p align="center">No upload service. No fork patch. No plugin-owned API key.<br>
-Native attachments for vision models; a configurable vision delegate for text-only models.</p>
+Native attachments by default; a configurable vision delegate for text-only or explicitly selected models.</p>
 
 <p align="center">
   <img alt="opencode-see flow: path, attachment, input image, model" src="./assets/stickers-en.svg" width="720">
 </p>
 
 <p align="center">
-  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-e85d75?style=flat-square">
+  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-e85d75?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-e85d75?style=flat-square">
   <img alt="OpenCode plugin" src="https://img.shields.io/badge/OpenCode-plugin-e85d75?style=flat-square">
 </p>
@@ -38,28 +38,30 @@ existing path.
 `opencode-see` adds the bridge. It can read a local PNG, JPEG, WebP, or GIF, or
 reuse images already attached in the current OpenCode session. Local paths use
 the normal file permissions; session images come through the OpenCode SDK. Both
-become standard attachments for vision-capable models. For text-only models the
-plugin can ask a configured vision model a specific question about the same
-image and return its grounded answer as text. It can also ask a local Chromium
-installation to capture a web page first.
+become standard attachments for vision-capable models. For text-only models, or
+native models explicitly routed through a delegate, the plugin can ask a
+configured vision model a specific question about the same image and return its
+grounded answer as text. It can also ask a local Chromium installation to
+capture a web page first.
 
 ## 🪄 The whole trick
 
 The plugin has no provider client, API key, or OAuth flow. OpenCode owns both
 provider authentication and model transport. The plugin checks the active
-model's declared capabilities: native vision gets the original attachment,
-while a text-only model can receive text from a short-lived OpenCode session on
-the configured vision delegate.
+model's declared capabilities and the exact configured route: native vision gets
+the original attachment by default, while a text-only or explicitly selected
+model can receive text from a short-lived OpenCode session on the configured
+vision delegate.
 
 ```mermaid
 flowchart LR
   P[local path or session image] --> T[image_view]
-  T --> C{active model supports images?}
-  C -->|yes| A[file attachment]
+  T --> C{delegation required?}
+  C -->|no| A[file attachment]
   A --> M[active vision model]
-  C -->|no| D[temporary vision session]
+  C -->|text-only or forceFor| D[temporary vision session]
   D --> X[text description]
-  X --> N[active text-only model]
+  X --> N[active caller]
 ```
 
 That keeps the plugin provider-agnostic. It works directly with any model whose
@@ -135,13 +137,14 @@ Look at the image I just attached and read the exact error message.
 Take a screenshot of http://localhost:3000 at 1440×900 and compare it with ~/Pictures/reference.png.
 ```
 
-## 🔭 Vision delegation for text-only models
+## 🔭 Vision delegation
 
 Delegation is enabled by default. When the active model declares
-`capabilities.input.image=false`, the plugin creates a temporary OpenCode
-session, sends the images to the configured vision model, and adds this block to
-the tool result. When `question` is supplied, it is appended to the configured
-baseline prompt so the delegate answers the caller's exact visual question:
+`capabilities.input.image=false` or its exact reference appears in `forceFor`,
+the plugin creates a temporary OpenCode session, sends the images to the
+configured vision model, and adds this block to the tool result. When `question`
+is supplied, it is appended to the configured baseline prompt so the delegate
+answers the caller's exact visual question:
 
 ```text
 Vision via gpt-5.6-luna:
@@ -155,9 +158,26 @@ Configure it in `opencode-see.json`:
   "visionDelegate": {
     "enabled": true,
     "model": "opencode-go/gpt-5.6-luna",
+    "forceFor": [],
     "prompt": "Опиши содержимое каждой приложенной картинки подробно и по делу.",
     "timeoutMs": 90000,
     "deleteAfter": true
+  }
+}
+```
+
+`forceFor` routes the listed active models through the delegate even when they
+declare native image input. Use exact `provider/model` references. Other vision
+models keep receiving native attachments, while text-only models continue to
+delegate automatically. The setting applies to `image_view` and `screenshot`
+results; it does not rewrite images attached directly to a user message.
+
+For example, route Sol image-tool results through the default Luna delegate:
+
+```json
+{
+  "visionDelegate": {
+    "forceFor": ["openai/gpt-5.6-sol"]
   }
 }
 ```

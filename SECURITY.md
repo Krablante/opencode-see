@@ -21,11 +21,12 @@ Install only code you trust. `opencode-see` asks OpenCode for `read` permission
 for each image and `external_directory` permission outside the worktree. It has
 no provider credential loader and performs no direct provider API calls.
 
-When vision delegation is enabled for a text-only active model, the plugin sends
-the image to the configured vision model through a temporary OpenCode session.
-The OpenCode server owns provider authentication and transport; the plugin never
-reads those credentials. Treat the delegate configuration as a data-routing
-choice and use only a provider you trust with the selected images.
+When vision delegation is enabled for a text-only active model or a model listed
+in `visionDelegate.forceFor`, the plugin sends the image to the configured vision
+model through a temporary OpenCode session. The OpenCode server owns provider
+authentication and transport; the plugin never reads those credentials. Treat
+the delegate configuration as a data-routing choice and use only a provider you
+trust with the selected images.
 
 When `image_view` uses `latest` or `session`, the plugin reads projected messages
 only for the calling OpenCode session ID. It accepts supported data-URL images

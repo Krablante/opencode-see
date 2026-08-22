@@ -103,6 +103,7 @@ Create `opencode-see.json` in the active OpenCode config directory:
   "visionDelegate": {
     "enabled": true,
     "model": "opencode-go/gpt-5.6-luna",
+    "forceFor": [],
     "prompt": "Опиши содержимое каждой приложенной картинки подробно и по делу.",
     "timeoutMs": 90000,
     "deleteAfter": true
@@ -137,14 +138,29 @@ Environment overrides:
 | `OPENCODE_SEE_DELEGATE_TIMEOUT_MS` | `visionDelegate.timeoutMs` |
 | `OPENCODE_SEE_DELEGATE_DELETE_AFTER` | `visionDelegate.deleteAfter` |
 
-## Vision delegation for text-only models
+## Vision delegation
 
 The delegate is enabled by default. OpenCode's `chat.params` model capability is
 cached per active session. Native vision models keep the original attachment
-path with no delegated request. A text-only model causes the plugin to create a
-temporary session titled `opencode-see delegate`, prompt the configured vision
-model with the same data-URL image parts, collect assistant text, and delete the
-session when `deleteAfter` is true.
+path with no delegated request unless their exact `provider/model` reference is
+listed in `visionDelegate.forceFor`. A text-only or explicitly forced model
+causes the plugin to create a temporary session titled `opencode-see delegate`,
+prompt the configured vision model with the same data-URL image parts, collect
+assistant text, and delete the session when `deleteAfter` is true.
+
+`forceFor` is an exact-match list with no wildcard or provider-wide behavior.
+It affects images returned by `image_view` and `screenshot`; direct user-message
+attachments remain part of OpenCode's ordinary active-model transport.
+
+To route Sol image-tool results through the default Luna delegate:
+
+```json
+{
+  "visionDelegate": {
+    "forceFor": ["openai/gpt-5.6-sol"]
+  }
+}
+```
 
 Text-only models also receive one short system instruction telling them to call
 `image_view` immediately when an image attachment is present, use the latest

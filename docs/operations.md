@@ -9,10 +9,11 @@ to 64 messages and expands to the full current history only when that window is
 full but has no image. Explicit `session` lookup scans current history for the
 five newest unique images. OpenCode owns downstream resizing and transport.
 
-For a text-only active model, one temporary OpenCode session is created and
-prompted on the configured vision delegate. The request is bounded to 90 seconds
-by default and the session is deleted afterward. Native vision models perform no
-extra model request.
+For a text-only active model, or a native model named in
+`visionDelegate.forceFor`, one temporary OpenCode session is created and prompted
+on the configured vision delegate. The request is bounded to 90 seconds by
+default and the session is deleted afterward. Other native vision models perform
+no extra model request.
 
 `screenshot` starts one browser process per call and closes it after capture.
 There is no persistent browser, queue, cache, worker, or service. The default
@@ -41,11 +42,12 @@ unless a project deliberately treats one as a fixture or documentation asset.
 
 ### The model did not see an image
 
-Check the active model capability in OpenCode. A vision model should receive an
-attachment. A text-only model should receive a `Vision via <modelID>:` block;
-verify that `visionDelegate.enabled` is true and the configured provider/model
-is authenticated and supports image input. Delegation failures are returned as
-text and never replaced with a guessed description.
+Check the active model capability and `visionDelegate.forceFor` in OpenCode. An
+unlisted vision model should receive an attachment. A text-only or forced model
+should receive a `Vision via <modelID>:` block; verify that
+`visionDelegate.enabled` is true and the configured provider/model is
+authenticated and supports image input. Delegation failures are returned as text
+and never replaced with a guessed description.
 
 If the image was attached in chat, call `image_view` without `paths` or with
 `source: "latest"`. A text-only model is instructed to do this automatically.
@@ -83,9 +85,8 @@ npm run check
 npm run demos:check
 ```
 
-For live acceptance, attach an image directly to both a text-only and a
-vision-capable model. The text-only model should call `image_view` with the
-latest session source and receive a focused `Vision via` answer without first
-searching the filesystem. The native model should inspect the original
-attachment without a delegate call. Also verify explicit local paths,
+For live acceptance, use `image_view` with a text-only model, a forced native
+model, and an unlisted native model. The first two should receive a focused
+`Vision via` answer without an attachment; the unlisted model should receive the
+original attachment without a delegate call. Also verify an explicit local path,
 `source: "session"`, and `screenshot` with `question` when those paths change.
