@@ -15,9 +15,15 @@ on the configured vision delegate. The request is bounded to 90 seconds by
 default and the session is deleted afterward. Other native vision models perform
 no extra model request.
 
-`screenshot` starts one browser process per call and closes it after capture.
-There is no persistent browser, queue, cache, worker, or service. The default
+`screenshot` runs one short-lived browser attempt at a time. A CLI fallback starts
+only after the CDP browser is stopped. There is no persistent browser, queue,
+cache, worker, or service. The default
 timeout is 30 seconds and the default late-content budget is 2 seconds.
+The timeout is shared across CDP and CLI fallback, including target discovery
+and navigation. Cancellation and timeout skip fallback. Browser shutdown and
+profile removal complete before the call returns, so elapsed time can exceed
+the capture budget by a short cleanup delay. Both backends use private temporary
+profiles and refuse to replace an existing output file.
 
 The message transform normally returns without I/O. Only a completed compatible
 remote mid-turn compaction marker causes one local OpenCode history read, capped
@@ -39,6 +45,20 @@ Generated screenshots are runtime artifacts. Keep them out of source control
 unless a project deliberately treats one as a fixture or documentation asset.
 
 ## Troubleshooting
+
+### Repeated plugin-load error mentioning `paths.filter`
+
+Upgrade to 0.4.1 or newer and restart OpenCode. Older versions exported a
+permission helper from the plugin entry point; OpenCode could register the tools
+and then mistakenly call that helper as another plugin initializer. This was a
+plugin export defect, not a model or provider failure.
+
+### A screenshot times out or is cancelled
+
+The capture budget includes both backends, not a fresh timeout per attempt.
+Cancellation does not retry. A short delay while the browser exits is expected.
+For a genuinely slow page, increase `screenshotTimeoutMs`; increasing the
+late-content budget alone does not increase the overall deadline.
 
 ### The model did not see an image
 
@@ -81,9 +101,15 @@ browser test runner.
 
 ```bash
 npm install
-npm run check
-npm run demos:check
+npm run typecheck
 ```
+
+For a manual capture check, open a small local HTTP page and inspect the saved
+PNG. Also try an unreachable URL, a page that never finishes loading, cancellation
+before and during capture, and an existing output path. Check that cancellation
+does not start fallback, failed calls leave no browser/profile behind, and logs
+contain no delayed unhandled CDP rejection. Exercise an ordinary Chromium CLI
+fallback as well as Snap CDP when those installations are available.
 
 For live acceptance, use `image_view` with a text-only model, a forced native
 model, and an unlisted native model. The first two should receive a focused

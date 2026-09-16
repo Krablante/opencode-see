@@ -99,6 +99,10 @@ cross-session lookup.
 
 ## Image path boundary
 
+The plugin entry point exports only the plugin initializer (named and default
+aliases of the same function). Permission helpers live in `view.ts`: OpenCode's
+legacy loader treats each distinct runtime export as a plugin initializer.
+
 Paths are expanded and canonicalized with `realpath` before permission is
 requested. This matters for symlinks: a link inside the worktree cannot hide an
 external target. The tool asks `external_directory` for canonical paths outside
@@ -117,6 +121,20 @@ PNG as base64, writes the configured output, and removes the profile.
 Ordinary browser installations may use a headless CLI fallback. Snap Chromium
 does not: its private `/tmp` makes CLI file handoff unreliable, while CDP returns
 the bytes over loopback independently of snap filesystem visibility.
+
+One cancellable deadline covers both capture backends. CDP process failures
+cancel discovery and socket work; closing the socket settles all pending
+commands and event waits. Navigation and load are awaited together. CLI fallback
+uses the remaining deadline and its own temporary profile, never the default
+browser profile. Cancellation and deadline expiry bypass fallback entirely.
+
+Both backends stop their browser and remove their profile before returning bytes.
+On Unix, each browser owns an isolated process group; shutdown terminates that
+group and kills remaining children after the launcher exits so they cannot
+recreate the removed profile. Shutdown allows one second for SIGTERM before
+SIGKILL, then waits for the launcher to exit. This cleanup can briefly extend the
+observed call time beyond the capture deadline.
+One final exclusive write saves the image without replacing an existing file.
 
 There is no OpenCode/OpenCodez core patch. Both applications load the same
 public plugin interface.

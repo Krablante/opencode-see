@@ -14,7 +14,7 @@ Native attachments by default; a configurable vision delegate for text-only or e
 </p>
 
 <p align="center">
-  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-e85d75?style=flat-square">
+  <img alt="Version 0.4.1" src="https://img.shields.io/badge/version-0.4.1-e85d75?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-e85d75?style=flat-square">
   <img alt="OpenCode plugin" src="https://img.shields.io/badge/OpenCode-plugin-e85d75?style=flat-square">
 </p>
@@ -227,6 +227,11 @@ Screenshots default to `<active project>/.opencode/screenshots`. CDP is tried
 first; ordinary Chromium/Chrome installs may fall back to the headless CLI.
 Snap Chromium must use CDP because its private `/tmp` makes CLI output
 unreliable. If no browser exists, the tool returns an installation hint.
+
+The 30-second capture timeout is shared by CDP and any CLI fallback. Cancellation
+or timeout stops capture without starting a fallback; browser shutdown and
+temporary-profile cleanup finish before the call returns. Existing output files
+are never overwritten by either backend.
 
 See [Usage](./docs/usage.md) for configuration and every environment override.
 

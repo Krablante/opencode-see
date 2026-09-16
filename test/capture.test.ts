@@ -3,7 +3,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, it } from "node:test"
-import { CaptureUnavailableError, captureScreenshot, cliScratchPath, findChromium, isSnapChromium } from "../src/capture.js"
+import { CaptureUnavailableError, captureScreenshot, findChromium, isSnapChromium } from "../src/capture.js"
 import type { SeeConfig } from "../src/config.js"
 
 const config: SeeConfig = {
@@ -60,14 +60,10 @@ describe("browser discovery", () => {
     )
   })
 
-  it("recognizes snap launchers and keeps CLI scratch data in snap-visible storage", () => {
+  it("recognizes snap launchers", () => {
     assert.equal(isSnapChromium("/usr/bin/chromium-browser"), true)
     assert.equal(isSnapChromium("/snap/bin/chromium"), true)
     assert.equal(isSnapChromium("/usr/bin/google-chrome"), false)
-    assert.match(
-      cliScratchPath("/tmp/final.png", "/snap/bin/chromium", "/home/user", {}),
-      /^\/home\/user\/snap\/chromium\/common\/\.opencode-see-/,
-    )
   })
 })
 

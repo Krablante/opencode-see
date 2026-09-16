@@ -1,42 +1,16 @@
-import type { Plugin, ToolContext } from "@opencode-ai/plugin"
+import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
-import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { CaptureUnavailableError, captureScreenshot } from "./capture.js"
 import { rememberModelCapability, type ModelCapabilityCache } from "./capability.js"
 import { createCompactionReplay } from "./compaction-replay.js"
 import { loadConfig } from "./config.js"
 import { MAX_IMAGES } from "./constants.js"
 import { formatSessionImageMetadata, viewSessionImages } from "./session-images.js"
-import { formatImageMetadata, viewImages, type PreparedImage } from "./view.js"
+import { authorizeImagePaths, formatImageMetadata, viewImages, type PreparedImage } from "./view.js"
 import { createVisualResult } from "./vision.js"
 
 const TEXT_ONLY_IMAGE_GUIDANCE =
   'This model cannot inspect image bytes. For any image attachment, path, reference, or unsupported-image error, use exactly one image_view call as the first and only visual action. An attachment filename is not a path: use source="latest"; use paths only for an explicit real path. Pass the user\'s exact visual question as question, then rely on the "Vision via" result even if incomplete. Never inspect the image with read, glob, bash, ffmpeg, Python, screenshot, or file search, and never reopen it.'
-
-function containsPath(root: string, target: string): boolean {
-  const distance = relative(resolve(root), resolve(target))
-  return distance === "" || (!distance.startsWith("..") && !isAbsolute(distance))
-}
-
-export async function authorizeImagePaths(context: ToolContext, paths: string[]): Promise<void> {
-  const externalPatterns = [
-    ...new Set(
-      paths
-        .filter((path) => !containsPath(context.worktree, path))
-        .map((path) => join(dirname(path), "*").replaceAll("\\", "/")),
-    ),
-  ]
-  if (externalPatterns.length > 0) {
-    await context.ask({
-      permission: "external_directory",
-      patterns: externalPatterns,
-      always: externalPatterns,
-      metadata: { paths },
-    })
-  }
-  const readPatterns = paths.map((path) => relative(context.worktree, path).replaceAll("\\", "/"))
-  await context.ask({ permission: "read", patterns: readPatterns, always: readPatterns, metadata: { paths } })
-}
 
 export const OpenCodeSeePlugin: Plugin = async ({ client }) => {
   const capabilities: ModelCapabilityCache = new Map()

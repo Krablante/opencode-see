@@ -4,8 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, it } from "node:test"
 import type { ToolContext } from "@opencode-ai/plugin"
-import { authorizeImagePaths } from "../src/index.js"
-import { detectImageDimensions, detectMime, formatImageMetadata, viewImages } from "../src/view.js"
+import { authorizeImagePaths, detectImageDimensions, detectMime, formatImageMetadata, viewImages } from "../src/view.js"
 
 const roots: string[] = []
 afterEach(async () => {

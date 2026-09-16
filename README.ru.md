@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img alt="Версия 0.4.0" src="https://img.shields.io/badge/version-0.4.0-e85d75?style=flat-square">
+  <img alt="Версия 0.4.1" src="https://img.shields.io/badge/version-0.4.1-e85d75?style=flat-square">
   <img alt="Лицензия MIT" src="https://img.shields.io/badge/license-MIT-e85d75?style=flat-square">
   <img alt="Плагин OpenCode" src="https://img.shields.io/badge/OpenCode-plugin-e85d75?style=flat-square">
 </p>
@@ -231,6 +231,11 @@ failure.
 на headless CLI. Для snap Chromium CDP обязателен: приватный `/tmp` делает CLI-
 вывод ненадёжным. Если браузера нет, инструмент вернёт понятную команду
 установки.
+
+Таймаут захвата по умолчанию — 30 секунд на CDP и возможный CLI-fallback вместе.
+Отмена или истечение времени останавливают захват без запуска запасной попытки;
+перед возвратом результата плагин завершает браузер и удаляет временный профиль.
+Ни один из способов захвата не перезаписывает существующий выходной файл.
 
 Полный конфиг и переменные окружения — в [Usage](./docs/usage.md).
 

@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 0.4.1 - 2026-09-16
+
+- Keep permission helpers out of the plugin entry point so OpenCode does not
+  mistake them for plugin initializers and report a failed load.
+- Share one capture timeout across CDP discovery, navigation, capture, and CLI
+  fallback. Cancellation and timeout never start another browser attempt.
+- Settle CDP commands and event waits on connection failure or shutdown, avoiding
+  unhandled rejections after a failed navigation.
+- Wait for browser exit and remove temporary profiles on success and failure.
+  On Unix, terminate the capture's isolated process group, including children
+  that outlive the launcher and could recreate a deleted profile.
+  Give CLI capture its own profile and save both backends with exclusive output
+  creation, avoiding default-profile collisions and accidental overwrites.
+
 ## 0.4.0 - 2026-08-22
 
 - Add `visionDelegate.forceFor`, an exact `provider/model` list that routes

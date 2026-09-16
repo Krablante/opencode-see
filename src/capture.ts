@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process"
+import { once } from "node:events"
 import { accessSync, constants as fsConstants } from "node:fs"
-import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { homedir, platform as osPlatform, tmpdir } from "node:os"
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import type { SeeConfig } from "./config.js"
@@ -30,7 +31,6 @@ export type CaptureOptions = {
 
 export class CaptureUnavailableError extends Error {}
 
-type SpawnBrowser = typeof spawn
 type CdpReply = { id?: number; result?: Record<string, unknown>; error?: { message?: string }; method?: string; params?: unknown }
 
 function executableFromPath(name: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string | undefined {
@@ -137,9 +137,10 @@ async function profileRoot(browserPath: string, home: string, env: NodeJS.Proces
   return tmpdir()
 }
 
-async function readDevToolsPort(profile: string, deadline: number, signal?: AbortSignal): Promise<number> {
+async function readDevToolsPort(profile: string, signal: AbortSignal): Promise<number> {
   const activePort = join(profile, "DevToolsActivePort")
-  while (Date.now() < deadline) {
+  while (true) {
+    signal.throwIfAborted()
     try {
       const [line] = (await readFile(activePort, "utf8")).split("\n")
       const port = Number(line)
@@ -147,7 +148,6 @@ async function readDevToolsPort(profile: string, deadline: number, signal?: Abor
     } catch {}
     await wait(50, signal)
   }
-  throw new Error("Chromium did not expose a CDP port before the timeout")
 }
 
 class CdpClient {
@@ -155,76 +155,106 @@ class CdpClient {
   private pending = new Map<number, {
     resolve: (value: Record<string, unknown>) => void
     reject: (error: Error) => void
-    timer: NodeJS.Timeout
   }>()
-  private events = new Map<string, Array<() => void>>()
+  private events = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
+  private opening?: { resolve: () => void; reject: (error: Error) => void }
+  private failure?: Error
+  private aborted = () => this.close(this.signal.reason)
 
-  constructor(private socket: WebSocket, private commandTimeoutMs: number) {
+  constructor(private socket: WebSocket, private signal: AbortSignal) {
+    socket.addEventListener("open", () => {
+      this.opening?.resolve()
+      this.opening = undefined
+    })
+    socket.addEventListener("error", () => this.close(new Error("CDP WebSocket connection failed")))
+    socket.addEventListener("close", () => this.close())
     socket.addEventListener("message", (event) => {
-      const reply = JSON.parse(String(event.data)) as CdpReply
+      let reply: CdpReply
+      try {
+        reply = JSON.parse(String(event.data)) as CdpReply
+      } catch {
+        this.close(new Error("Invalid CDP response"))
+        return
+      }
       if (reply.id) {
         const pending = this.pending.get(reply.id)
         if (!pending) return
         this.pending.delete(reply.id)
-        clearTimeout(pending.timer)
         if (reply.error) pending.reject(new Error(reply.error.message ?? "CDP command failed"))
         else pending.resolve(reply.result ?? {})
         return
       }
       if (reply.method) {
-        for (const resolveEvent of this.events.get(reply.method) ?? []) resolveEvent()
+        this.events.get(reply.method)?.resolve()
         this.events.delete(reply.method)
+      }
+    })
+    signal.addEventListener("abort", this.aborted, { once: true })
+    if (signal.aborted) this.aborted()
+  }
+
+  async open(): Promise<void> {
+    if (this.failure) throw this.failure
+    if (this.socket.readyState === WebSocket.OPEN) return
+    await new Promise<void>((resolveOpen, reject) => {
+      this.opening = { resolve: resolveOpen, reject }
+    })
+  }
+
+  async send(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    if (this.failure) throw this.failure
+    const id = this.nextId++
+    return new Promise((resolveCommand, reject) => {
+      this.pending.set(id, { resolve: resolveCommand, reject })
+      try {
+        this.socket.send(JSON.stringify({ id, method, params }))
+      } catch (error) {
+        this.close(error instanceof Error ? error : new Error(String(error)))
       }
     })
   }
 
-  async open(timeoutMs: number): Promise<void> {
-    if (this.socket.readyState === WebSocket.OPEN) return
-    await new Promise<void>((resolveOpen, reject) => {
-      const timer = setTimeout(() => reject(new Error("CDP WebSocket connection timed out")), timeoutMs)
-      this.socket.addEventListener("open", () => { clearTimeout(timer); resolveOpen() }, { once: true })
-      this.socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error("CDP WebSocket connection failed")) }, { once: true })
-    })
-  }
-
-  send(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-    const id = this.nextId++
-    return new Promise((resolveCommand, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id)
-        reject(new Error(`${method} timed out`))
-      }, this.commandTimeoutMs)
-      this.pending.set(id, { resolve: resolveCommand, reject, timer })
-      this.socket.send(JSON.stringify({ id, method, params }))
-    })
-  }
-
-  event(method: string, timeoutMs: number): Promise<void> {
+  async event(method: string): Promise<void> {
+    if (this.failure) throw this.failure
     return new Promise((resolveEvent, reject) => {
-      const timer = setTimeout(() => reject(new Error(`${method} timed out`)), timeoutMs)
-      const listeners = this.events.get(method) ?? []
-      listeners.push(() => { clearTimeout(timer); resolveEvent() })
-      this.events.set(method, listeners)
+      this.events.set(method, { resolve: resolveEvent, reject })
     })
   }
 
-  close(): void {
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer)
-      pending.reject(new Error("CDP connection closed"))
-    }
+  close(error: Error = new Error("CDP connection closed")): void {
+    if (this.failure) return
+    this.failure = error
+    this.signal.removeEventListener("abort", this.aborted)
+    this.opening?.reject(error)
+    this.opening = undefined
+    for (const pending of this.pending.values()) pending.reject(error)
     this.pending.clear()
-    this.socket.close()
+    for (const event of this.events.values()) event.reject(error)
+    this.events.clear()
+    if (this.socket.readyState < WebSocket.CLOSING) this.socket.close()
   }
 }
 
 async function stopBrowser(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return
-  child.kill("SIGTERM")
-  await Promise.race([
-    new Promise<void>((resolveExit) => child.once("exit", () => resolveExit())),
-    wait(1_000).then(() => { if (child.exitCode === null) child.kill("SIGKILL") }),
-  ])
+  if (!child.pid) return
+  if (child.exitCode === null && child.signalCode === null) {
+    await new Promise<void>((resolveExit) => {
+      const timer = setTimeout(() => signalBrowser(child, "SIGKILL"), 1_000)
+      child.once("exit", () => { clearTimeout(timer); resolveExit() })
+      signalBrowser(child, "SIGTERM")
+    })
+  }
+  // The launcher can exit before its children finish writing the profile.
+  if (process.platform !== "win32") signalBrowser(child, "SIGKILL")
+}
+
+function signalBrowser(child: ChildProcess, signal: NodeJS.Signals): void {
+  try {
+    if (process.platform === "win32") child.kill(signal)
+    else process.kill(-child.pid!, signal)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error
+  }
 }
 
 async function captureCdp(
@@ -232,55 +262,55 @@ async function captureCdp(
   url: string,
   width: number,
   height: number,
-  timeoutMs: number,
   virtualTimeBudgetMs: number,
-  signal: AbortSignal | undefined,
+  signal: AbortSignal,
   home: string,
   env: NodeJS.ProcessEnv,
-  spawnBrowser: SpawnBrowser = spawn,
 ): Promise<Buffer> {
   const root = await profileRoot(browserPath, home, env)
   const profile = await mkdtemp(join(root, "opencode-see-cdp-"))
-  const child = spawnBrowser(browserPath, [
-    "--headless=new",
-    "--disable-gpu",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--remote-debugging-address=127.0.0.1",
-    "--remote-debugging-port=0",
-    `--user-data-dir=${profile}`,
-    "about:blank",
-  ], { stdio: "ignore", env })
-  const deadline = Date.now() + timeoutMs
+  const lifecycle = new AbortController()
+  const active = AbortSignal.any([signal, lifecycle.signal])
+  let child: ChildProcess | undefined
   let client: CdpClient | undefined
   try {
-    const port = await Promise.race([
-      readDevToolsPort(profile, deadline, signal),
-      new Promise<number>((_resolvePort, reject) => {
-        child.once("error", reject)
-        child.once("exit", (code, exitSignal) => {
-          reject(new Error(`Chromium exited before CDP was ready (${code ?? exitSignal ?? "unknown"})`))
-        })
-      }),
-    ])
+    active.throwIfAborted()
+    child = spawn(browserPath, [
+      "--headless=new",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--remote-debugging-address=127.0.0.1",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      "about:blank",
+    ], { stdio: "ignore", env, detached: process.platform !== "win32" })
+    child.once("error", (error) => lifecycle.abort(error))
+    child.once("exit", (code, exitSignal) => {
+      lifecycle.abort(new Error(`Chromium exited during CDP capture (${code ?? exitSignal ?? "unknown"})`))
+    })
+    const port = await readDevToolsPort(profile, active)
     const targets = await fetch(`http://127.0.0.1:${port}/json/list`, {
       headers: { "User-Agent": USER_AGENT },
-      signal,
+      signal: active,
     }).then((response) => {
       if (!response.ok) throw new Error(`CDP target discovery failed (${response.status})`)
       return response.json() as Promise<Array<{ type: string; webSocketDebuggerUrl?: string }>>
     })
     const endpoint = targets.find((target) => target.type === "page")?.webSocketDebuggerUrl
     if (!endpoint) throw new Error("Chromium did not expose a page target")
-    const remaining = Math.max(1, deadline - Date.now())
-    client = new CdpClient(new WebSocket(endpoint), remaining)
-    await client.open(remaining)
+    active.throwIfAborted()
+    client = new CdpClient(new WebSocket(endpoint), active)
+    await client.open()
     await client.send("Page.enable")
     await client.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false })
-    const loaded = client.event("Page.loadEventFired", remaining)
-    await client.send("Page.navigate", { url })
-    await loaded
-    await wait(Math.min(virtualTimeBudgetMs, Math.max(0, deadline - Date.now())), signal)
+    await Promise.all([
+      client.event("Page.loadEventFired"),
+      client.send("Page.navigate", { url }).then((result) => {
+        if (result.errorText) throw new Error(`Chromium navigation failed: ${result.errorText}`)
+      }),
+    ])
+    await wait(virtualTimeBudgetMs, active)
     const result = await client.send("Page.captureScreenshot", {
       format: "png",
       fromSurface: true,
@@ -289,67 +319,50 @@ async function captureCdp(
     if (typeof result.data !== "string") throw new Error("CDP screenshot response did not contain image data")
     return Buffer.from(result.data, "base64")
   } finally {
+    lifecycle.abort(new Error("CDP capture finished"))
     client?.close()
-    await stopBrowser(child)
+    if (child) await stopBrowser(child)
     await rm(profile, { recursive: true, force: true })
   }
-}
-
-export function cliScratchPath(
-  finalPath: string,
-  browserPath: string,
-  home: string = homedir(),
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const base = isSnapChromium(browserPath)
-    ? (env.SNAP_USER_COMMON ?? join(home, "snap", "chromium", "common"))
-    : dirname(finalPath)
-  return join(base, `.opencode-see-${process.pid}-${Date.now()}.png`)
 }
 
 async function captureCli(
   browserPath: string,
   url: string,
-  finalPath: string,
   width: number,
   height: number,
   virtualTimeBudgetMs: number,
-  timeoutMs: number,
-  signal: AbortSignal | undefined,
+  signal: AbortSignal,
   home: string,
   env: NodeJS.ProcessEnv,
-  spawnBrowser: SpawnBrowser = spawn,
 ): Promise<Buffer> {
-  const scratch = cliScratchPath(finalPath, browserPath, home, env)
-  await mkdir(dirname(scratch), { recursive: true })
-  const child = spawnBrowser(browserPath, [
-    "--headless=new",
-    "--disable-gpu",
-    `--screenshot=${scratch}`,
-    `--window-size=${width},${height}`,
-    `--virtual-time-budget=${virtualTimeBudgetMs}`,
-    url,
-  ], { stdio: "ignore", env })
+  const profile = await mkdtemp(join(await profileRoot(browserPath, home, env), "opencode-see-cli-"))
+  const scratch = join(profile, "screenshot.png")
+  let child: ChildProcess | undefined
   try {
-    await new Promise<void>((resolveExit, reject) => {
-      const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Chromium CLI screenshot timed out")) }, timeoutMs)
-      signal?.addEventListener("abort", () => { child.kill("SIGTERM"); reject(signal.reason ?? new Error("Screenshot cancelled")) }, { once: true })
-      child.once("error", reject)
-      child.once("exit", (code) => {
-        clearTimeout(timer)
-        if (code === 0) resolveExit()
-        else reject(new Error(`Chromium CLI screenshot failed with exit code ${code}`))
-      })
-    })
-    const bytes = await readFile(scratch)
-    if (scratch !== finalPath) await copyFile(scratch, finalPath)
-    return bytes
+    signal.throwIfAborted()
+    child = spawn(browserPath, [
+      "--headless=new",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-default-browser-check",
+      `--user-data-dir=${profile}`,
+      `--screenshot=${scratch}`,
+      `--window-size=${width},${height}`,
+      `--virtual-time-budget=${virtualTimeBudgetMs}`,
+      url,
+    ], { stdio: "ignore", env, detached: process.platform !== "win32" })
+    const [code, exitSignal] = await once(child, "exit", { signal })
+    if (code !== 0) throw new Error(`Chromium CLI screenshot failed (${code ?? exitSignal})`)
+    return await readFile(scratch, { signal })
   } finally {
-    await rm(scratch, { force: true })
+    if (child) await stopBrowser(child)
+    await rm(profile, { recursive: true, force: true })
   }
 }
 
 export async function captureScreenshot(options: CaptureOptions): Promise<ScreenshotResult> {
+  options.signal?.throwIfAborted()
   const env = options.env ?? process.env
   const home = options.home ?? homedir()
   const platform = options.platform ?? osPlatform()
@@ -371,36 +384,49 @@ export async function captureScreenshot(options: CaptureOptions): Promise<Screen
   }
   let bytes: Buffer
   let backend: CaptureBackend = "cdp"
+  const timeout = new AbortController()
+  const timer = setTimeout(
+    () => timeout.abort(new Error(`Screenshot timed out after ${options.config.screenshotTimeoutMs} ms`)),
+    options.config.screenshotTimeoutMs,
+  )
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout.signal]) : timeout.signal
   try {
-    bytes = await captureCdp(
-      browserPath,
-      url,
-      width,
-      height,
-      options.config.screenshotTimeoutMs,
-      options.config.virtualTimeBudgetMs,
-      options.signal,
-      home,
-      env,
-    )
-  } catch (error) {
-    if (isSnapChromium(browserPath)) {
-      throw new Error(`CDP screenshot failed for snap Chromium; CLI fallback is disabled because snap has a private /tmp: ${error instanceof Error ? error.message : String(error)}`)
+    signal.throwIfAborted()
+    try {
+      bytes = await captureCdp(
+        browserPath,
+        url,
+        width,
+        height,
+        options.config.virtualTimeBudgetMs,
+        signal,
+        home,
+        env,
+      )
+    } catch (error) {
+      signal.throwIfAborted()
+      if (isSnapChromium(browserPath)) {
+        throw new Error(`CDP screenshot failed for snap Chromium; CLI fallback is disabled because snap has a private /tmp: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      backend = "cli"
+      bytes = await captureCli(
+        browserPath,
+        url,
+        width,
+        height,
+        options.config.virtualTimeBudgetMs,
+        signal,
+        home,
+        env,
+      )
     }
-    backend = "cli"
-    bytes = await captureCli(
-      browserPath,
-      url,
-      absolutePath,
-      width,
-      height,
-      options.config.virtualTimeBudgetMs,
-      options.config.screenshotTimeoutMs,
-      options.signal,
-      home,
-      env,
-    )
+    signal.throwIfAborted()
+    await writeFile(absolutePath, bytes, { flag: "wx" })
+    return { absolutePath, filename: basename(absolutePath), bytes, backend, width, height }
+  } catch (error) {
+    signal.throwIfAborted()
+    throw error
+  } finally {
+    clearTimeout(timer)
   }
-  if (backend === "cdp") await writeFile(absolutePath, bytes, { flag: "wx" })
-  return { absolutePath, filename: basename(absolutePath), bytes, backend, width, height }
 }

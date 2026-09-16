@@ -1,6 +1,7 @@
+import type { ToolContext } from "@opencode-ai/plugin"
 import { readFile, realpath, stat } from "node:fs/promises"
 import { homedir } from "node:os"
-import { basename, isAbsolute, join, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import {
   CORE_RESIZE_BASE64_BYTES,
   CORE_RESIZE_DIMENSION,
@@ -25,6 +26,31 @@ export type ViewImagesOptions = {
   directory: string
   authorize: (paths: string[]) => Promise<void>
   home?: string
+}
+
+function containsPath(root: string, target: string): boolean {
+  const distance = relative(resolve(root), resolve(target))
+  return distance === "" || (!distance.startsWith("..") && !isAbsolute(distance))
+}
+
+export async function authorizeImagePaths(context: ToolContext, paths: string[]): Promise<void> {
+  const externalPatterns = [
+    ...new Set(
+      paths
+        .filter((path) => !containsPath(context.worktree, path))
+        .map((path) => join(dirname(path), "*").replaceAll("\\", "/")),
+    ),
+  ]
+  if (externalPatterns.length > 0) {
+    await context.ask({
+      permission: "external_directory",
+      patterns: externalPatterns,
+      always: externalPatterns,
+      metadata: { paths },
+    })
+  }
+  const readPatterns = paths.map((path) => relative(context.worktree, path).replaceAll("\\", "/"))
+  await context.ask({ permission: "read", patterns: readPatterns, always: readPatterns, metadata: { paths } })
 }
 
 export function expandHome(value: string, home: string = homedir()): string {
