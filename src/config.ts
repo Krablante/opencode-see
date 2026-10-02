@@ -60,7 +60,11 @@ export function defaultConfigPath(
 
 async function readConfigFile(path: string): Promise<ConfigFile> {
   try {
-    return JSON.parse(await readFile(path, "utf8")) as ConfigFile
+    const value: unknown = JSON.parse(await readFile(path, "utf8"))
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(`opencode-see config must be a JSON object: ${path}`)
+    }
+    return value as ConfigFile
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {}
     if (error instanceof SyntaxError) throw new Error(`Invalid JSON in opencode-see config: ${path}`)
@@ -77,7 +81,8 @@ function nonEmptyString(value: unknown, label: string): string | undefined {
 function positiveInteger(value: unknown, fallback: number, label: string): number {
   if (value === undefined) return fallback
   const number = typeof value === "string" ? Number(value) : value
-  if (!Number.isInteger(number) || Number(number) < 1) throw new Error(`${label} must be a positive integer`)
+  if (!Number.isSafeInteger(number) || Number(number) < 1) throw new Error(`${label} must be a positive integer`)
+  if (Number(number) > 2_147_483_647) throw new Error(`${label} must not exceed 2147483647`)
   return Number(number)
 }
 
@@ -123,6 +128,12 @@ export async function loadConfig(
 ): Promise<SeeConfig> {
   const configPath = defaultConfigPath(env, home, platform)
   const file = await readConfigFile(configPath)
+  for (const key of ["viewport", "visionDelegate"] as const) {
+    const value = file[key]
+    if (value !== undefined && (!value || typeof value !== "object" || Array.isArray(value))) {
+      throw new Error(`${key} in ${configPath} must be a JSON object`)
+    }
+  }
   const screenshotDirectory =
     nonEmptyString(env.OPENCODE_SEE_SCREENSHOT_DIRECTORY, "OPENCODE_SEE_SCREENSHOT_DIRECTORY") ??
     nonEmptyString(file.screenshotDirectory, `screenshotDirectory in ${configPath}`) ??

@@ -1,5 +1,6 @@
 {
   "name": "opencode-see",
+  "private": true,
   "version": "0.4.1",
   "description": "Show local or session images to OpenCode models through native vision or delegation.",
   "type": "module",
@@ -9,18 +10,13 @@
     "examples",
     "assets",
     "docs",
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
+    "*.md",
     "LICENSE",
-    "NOTICE",
-    "README.md",
-    "README.ru.md",
-    "SECURITY.md"
+    "NOTICE"
   ],
   "scripts": {
     "check": "npm run typecheck && npm test",
     "demos": "node --import tsx scripts/generate-demos.mjs",
-    "demos:check": "node --import tsx scripts/generate-demos.mjs --check",
     "test": "tsx --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -33,9 +29,6 @@
   ],
   "author": "Krablante",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Krablante/opencode-see.git"

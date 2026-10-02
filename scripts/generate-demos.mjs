@@ -2,8 +2,8 @@
 
 import { spawnSync } from "node:child_process"
 import { createServer } from "node:http"
-import { existsSync, readFileSync } from "node:fs"
-import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
+import { copyFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -13,7 +13,6 @@ import { formatImageMetadata, viewImages } from "../src/view.ts"
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const assetsDir = path.join(repositoryRoot, "assets")
-const packageVersion = JSON.parse(readFileSync(path.join(repositoryRoot, "package.json"), "utf8")).version
 const WIDTH = 1000
 const HEIGHT = 620
 const FPS = 10
@@ -22,26 +21,27 @@ const DURATION = 18
 const translations = {
   en: {
     title: "the model sees the local file",
-    note: "real image reader + real Chromium CDP capture",
-    viewCommand: "image_view --paths scene.png photo.jpg card.webp motion.gif",
-    captureCommand: "screenshot --url http://127.0.0.1:<port>",
-    attachment: "4 standard image attachments returned",
-    captured: "screenshot attachment returned",
+    note: "illustrated calls · real image reader + Chromium capture",
+    viewCommand: 'image_view({"paths": ["scene.png", "photo.jpg", "card.webp", "motion.gif"]})',
+    captureCommand: 'screenshot({"url": "http://127.0.0.1:<port>"})',
+    attachment: "4 images prepared for native attachments",
+    captured: "PNG saved for a native attachment",
   },
   ru: {
     title: "модель видит локальный файл",
-    note: "настоящее чтение файлов + настоящий Chromium CDP",
-    viewCommand: "image_view --paths scene.png photo.jpg card.webp motion.gif",
-    captureCommand: "screenshot --url http://127.0.0.1:<port>",
-    attachment: "возвращены 4 стандартных image attachments",
-    captured: "возвращён attachment скриншота",
+    note: "иллюстрация вызовов · настоящие чтение файлов и захват Chromium",
+    viewCommand: 'image_view({"paths": ["scene.png", "photo.jpg", "card.webp", "motion.gif"]})',
+    captureCommand: 'screenshot({"url": "http://127.0.0.1:<port>"})',
+    attachment: "подготовлены 4 картинки для нативных вложений",
+    captured: "PNG сохранён для нативного вложения",
   },
 }
 
 function fail(message) { throw new Error(message) }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { cwd: repositoryRoot, encoding: "utf8", ...options })
+  const boundedArgs = command === "ffmpeg" ? ["-threads", "1", "-filter_threads", "1", "-filter_complex_threads", "1", ...args] : args
+  const result = spawnSync(command, boundedArgs, { cwd: repositoryRoot, encoding: "utf8", ...options })
   if (result.error) fail(`${command} could not start: ${result.error.message}`)
   if (result.status !== 0) {
     fail([`${command} ${args.join(" ")} failed`, result.stdout?.trimEnd(), result.stderr?.trimEnd()].filter(Boolean).join("\n"))
@@ -136,7 +136,7 @@ function escapeAss(value) {
 
 function body(text) {
   return text.split("\n").map((line) => {
-    if (line.startsWith("$ ")) return `{\\c&H00755DE8&}$ {\\c&H00F6EEF5&}${escapeAss(line.slice(2))}`
+    if (line.startsWith("> ")) return `{\\c&H00755DE8&}> {\\c&H00F6EEF5&}${escapeAss(line.slice(2))}`
     if (line.startsWith("Image metadata:")) return `{\\c&H00755DE8&}${escapeAss(line)}`
     if (line.startsWith("✓")) return `{\\c&H0071C982&}${escapeAss(line)}`
     return escapeAss(line)
@@ -147,13 +147,13 @@ function assDocument(language, flow) {
   const copy = translations[language]
   const end = assTime(DURATION)
   const frames = [
-    { start: 0, end: 8.5, text: `$ ${copy.viewCommand}\n${flow.metadata}\n✓ ${copy.attachment}` },
-    { start: 8.5, end: DURATION, text: `$ ${copy.captureCommand}\n${flow.screenshot}\n✓ ${copy.captured}` },
+    { start: 0, end: 8.5, text: `> ${copy.viewCommand}\n${flow.metadata}\n✓ ${copy.attachment}` },
+    { start: 8.5, end: DURATION, text: `> ${copy.captureCommand}\n${flow.screenshot}\n✓ ${copy.captured}` },
   ]
   const events = [
     `Dialogue: 0,0:00:00.00,${end},Header,,0,0,0,,{\\c&H00755DE8&\\b1}opencode-see{\\c&H009E948B&\\b0}  —  ${escapeAss(copy.title)}`,
     `Dialogue: 0,0:00:00.00,${end},Chrome,,0,0,0,,{\\c&H004355F8&}■  {\\c&H0039A7FE&}■  {\\c&H0046C85A&}■`,
-    `Dialogue: 0,0:00:00.00,${end},Note,,0,0,0,,${escapeAss(copy.note)} · v${escapeAss(packageVersion)}`,
+    `Dialogue: 0,0:00:00.00,${end},Note,,0,0,0,,${escapeAss(copy.note)}`,
     ...frames.map((frame) => `Dialogue: 0,${assTime(frame.start)},${assTime(frame.end)},Body,,0,0,0,,${body(frame.text)}`),
   ]
   return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${WIDTH}\nPlayResY: ${HEIGHT}\nWrapStyle: 2\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Header,DejaVu Sans,19,&H009E948B,&H009E948B,&H000D1117,&H000D1117,0,0,0,0,100,100,0,0,1,0,0,8,30,30,16,1\nStyle: Chrome,DejaVu Sans,13,&H009E948B,&H009E948B,&H000D1117,&H000D1117,0,0,0,0,100,100,0,0,1,0,0,7,19,30,20,1\nStyle: Body,DejaVu Sans Mono,17,&H00D9D1C9,&H00D9D1C9,&H000D1117,&H000D1117,0,0,0,0,100,100,0,0,1,0,0,7,38,30,78,1\nStyle: Note,DejaVu Sans,15,&H009E948B,&H009E948B,&H000D1117,&H000D1117,0,0,0,0,100,100,0,0,1,0,0,3,30,30,18,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n${events.join("\n")}\n`
@@ -174,28 +174,16 @@ async function render(language, flow, workDir) {
   return gifPath
 }
 
-async function publishOrCheck(generated, language, check) {
-  const target = path.join(assetsDir, `demo-${language}.gif`)
-  if (!check) {
-    await copyFile(generated, target)
-    return
-  }
-  const [actual, expected] = await Promise.all([readFile(generated), readFile(target)])
-  if (!actual.equals(expected)) fail(`${path.relative(repositoryRoot, target)} is stale; run npm run demos`)
-}
-
 async function main() {
-  const args = new Set(process.argv.slice(2))
-  const check = args.delete("--check")
-  if (args.size) fail(`unsupported option: ${[...args][0]}`)
+  if (process.argv.length > 2) fail(`unsupported option: ${process.argv[2]}`)
   run("ffmpeg", ["-hide_banner", "-h", "filter=ass"])
   const workDir = await mkdtemp(path.join(tmpdir(), "opencode-see-demo-"))
   try {
     const flow = await captureRealFlow(workDir)
     for (const language of Object.keys(translations)) {
       const generated = await render(language, flow, workDir)
-      await publishOrCheck(generated, language, check)
-      console.log(`${check ? "verified" : "generated"}: assets/demo-${language}.gif`)
+      await copyFile(generated, path.join(assetsDir, `demo-${language}.gif`))
+      console.log(`generated: assets/demo-${language}.gif`)
     }
   } finally {
     await rm(workDir, { recursive: true, force: true })

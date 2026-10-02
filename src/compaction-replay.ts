@@ -27,6 +27,7 @@ export function createCompactionReplay(client: PluginInput["client"]): Transform
       const response = await client.session.messages({
         path: { id: boundary.sessionID },
         query: { limit: HISTORY_LIMIT },
+        signal: AbortSignal.timeout(5_000),
       })
       if (!response.data) return
 

@@ -1,8 +1,38 @@
 # Changelog
 
+[English](./CHANGELOG.md) · [Русский](./CHANGELOG.ru.md) · [Home](./README.md)
+
 All notable changes to this project are documented here.
 
 ## Unreleased
+
+- Read session history in growing tail windows for both image-source modes;
+  stop after the requested batch or five recent unique images. Decode only
+  selected candidates and reuse stored base64 instead of encoding it again.
+- Limit images to 20 MiB, read local files sequentially, and propagate tool
+  cancellation to file and session reads. Support short lossless WebP headers.
+- Disable tools in vision delegate sessions, stop server-side execution on
+  timeout/cancellation even when retaining the session, and reject partial
+  assistant text accompanied by a server error. Propagate caller cancellation.
+  Guide text-only callers to `screenshot` for requested web pages as well as
+  `image_view` for existing images.
+- Validate config object shapes and timer ranges; do not infer image capability
+  merely from the configured delegate name. Cancel capability lookups with the
+  calling tool and bound optional compaction-history recovery to five seconds.
+- Bound screenshot viewports to 32 megapixels, capture the viewport consistently,
+  validate returned PNG headers, and reject symlink escapes from the output root.
+  Fix permission checks for dot-prefixed child paths.
+- Honor explicit browser selection without silent substitution; discover standard
+  Windows Chrome installations.
+- Organize the handbook into matching English and Russian usage, configuration,
+  operations, and architecture pages. Shorten README and localize contributor,
+  security, and changelog pages with an extensible language-suffix convention.
+- Make the example configuration portable and demo media explicit illustrated
+  tool calls. Remove a brittle binary-media comparison and bound demo rendering
+  threads.
+- Mark the package private to prevent npm publication; remove the unused failing
+  publish workflow and destructive standalone staging script. Keep GitHub and
+  existing operator deployment as the distribution paths.
 
 ## 0.4.1 - 2026-09-16
 

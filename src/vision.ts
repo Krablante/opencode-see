@@ -17,11 +17,12 @@ export async function createVisualResult(input: {
   config: SeeConfig
   question?: string
 }): Promise<VisualResult> {
+  input.context.abort.throwIfAborted()
   const capability = await resolveModelCapability(
     input.client,
     input.capabilities,
     input.context.sessionID,
-    input.config.visionDelegate,
+    input.context.abort,
   )
   const activeModel = `${capability.providerID}/${capability.modelID}`
   const forced = input.config.visionDelegate.forceFor?.includes(activeModel) === true
@@ -59,6 +60,7 @@ export async function createVisualResult(input: {
       attachments: [],
     }
   } catch (error) {
+    input.context.abort.throwIfAborted()
     return {
       output: `${input.metadata}\n\nVision delegation failed via ${input.config.visionDelegate.modelID}: ${error instanceof Error ? error.message : String(error)}. No visual description was produced.`,
       attachments: [],

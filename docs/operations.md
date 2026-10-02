@@ -1,118 +1,98 @@
 # Operations
 
-## Runtime characteristics
+[English](./operations.md) · [Русский](./operations.ru.md) · [Home](../README.md)
 
-`image_view` has no background process. A local-path call reads each file once;
-a session-source call reads the calling session through the OpenCode SDK. Both
-produce at most five validated data-URL images. `latest` normally limits history
-to 64 messages and expands to the full current history only when that window is
-full but has no image. Explicit `session` lookup scans current history for the
-five newest unique images. OpenCode owns downstream resizing and transport.
+## Install and update
 
-For a text-only active model, or a native model named in
-`visionDelegate.forceFor`, one temporary OpenCode session is created and prompted
-on the configured vision delegate. The request is bounded to 90 seconds by
-default and the session is deleted afterward. Other native vision models perform
-no extra model request.
+[README](../README.md#install) owns installation instructions. The plugin runs
+from TypeScript source through the host's loader. It needs no build, container,
+daemon, or release pipeline. `package-lock.json` pins the dependency tree;
+`npm ci --omit=dev` installs only runtime dependencies. The package is private
+to prevent npm publication; the code remains public and MIT-licensed.
 
-`screenshot` runs one short-lived browser attempt at a time. A CLI fallback starts
-only after the CDP browser is stopped. There is no persistent browser, queue,
-cache, worker, or service. The default
-timeout is 30 seconds and the default late-content budget is 2 seconds.
-The timeout is shared across CDP and CLI fallback, including target discovery
-and navigation. Cancellation and timeout skip fallback. Browser shutdown and
-profile removal complete before the call returns, so elapsed time can exceed
-the capture budget by a short cleanup delay. Both backends use private temporary
-profiles and refuse to replace an existing output file.
+Update a clean clone with:
 
-The message transform normally returns without I/O. Only a completed compatible
-remote mid-turn compaction marker causes one local OpenCode history read, capped
-at 32 messages, to restore up to five image attachments for the immediate model
-continuation. The replay is projection-only and keeps no cache or persistent
-state.
+```bash
+git pull --ff-only
+npm ci --omit=dev
+```
 
-## Paths
+Restart OpenCode or OpenCodez afterward. An already loaded plugin keeps the old
+code. For a pinned installation, choose a published Git tag instead of tracking
+`main`; consult [Releases](https://github.com/Krablante/opencode-see/releases)
+and [Changelog](../CHANGELOG.md) before upgrading. To roll back, check out the
+previous chosen revision, run the same install command, and restart again.
 
-- public config: `~/.config/opencode/opencode-see.json` unless the active
-  OpenCode config directory overrides it;
-- default screenshots: `<active project>/.opencode/screenshots`;
-- local plugin install: any stable clone referenced by an absolute `file://`
-  URL;
-- snap CDP profiles: ephemeral directories under snap user storage, removed
-  after each call.
+Operator-managed installations should use their existing deployment mechanism
+to copy `src/`, `package.json`, and `package-lock.json`, install dependencies,
+and restart the intended host. Verify the copied source matches the selected
+revision. Never replace a directory containing user configuration or captures
+as an update shortcut.
 
-Generated screenshots are runtime artifacts. Keep them out of source control
-unless a project deliberately treats one as a fixture or documentation asset.
+## Browser setup
+
+Only `screenshot` needs a Chromium-based browser. Discovery tries an explicit
+`chromiumPath` / `OPENCODE_SEE_CHROMIUM` first and fails if that choice is broken.
+Without an override it checks `chromium-browser`, `google-chrome`, Linux snap
+launchers, and `chromium`, then standard Chrome locations on macOS and Windows
+and Edge under Windows Program Files.
+
+| System | Installation |
+| --- | --- |
+| Debian | `sudo apt install chromium` |
+| Ubuntu | `sudo snap install chromium` or the distribution's `chromium-browser` package |
+| Fedora | `sudo dnf install chromium` |
+| macOS | Install Google Chrome |
+| Windows | Use Microsoft Edge or install Google Chrome |
+
+Set `OPENCODE_SEE_CHROMIUM` if your executable lives elsewhere. Run OpenCode as
+a normal user; this plugin does not disable Chromium's sandbox for root or
+container execution. Browser startup errors surface from the capture attempt.
+
+## Storage and deadlines
+
+Screenshots remain in the configured output directory until you remove them.
+Keep runtime captures out of source control and apply your own retention policy.
+The plugin owns no cleanup daemon. Browser profiles are temporary and removed
+after each capture; Snap profiles use snap-visible user storage.
+
+Native image delivery adds no model request. Delegation adds one model session
+and provider charge. It deletes the session by default; `deleteAfter: false`
+retains images and text in host storage. Session history and native attachments
+also remain subject to OpenCode's normal storage policy.
+
+The capture deadline is 30 seconds by default, shared across CDP and CLI. Snap
+does not use CLI fallback. Timeout and caller cancellation stop capture without
+retrying. Browser shutdown finishes before return and can add a short delay.
+The delegate's 90-second deadline covers creation and the answer; server abort
+and deletion have separate cleanup budgets of up to 10 seconds each.
 
 ## Troubleshooting
 
-### Repeated plugin-load error mentioning `paths.filter`
+| Symptom | Check |
+| --- | --- |
+| Model did not see the image | Native image capability, exact `forceFor` route, and the `Vision via` or failure block |
+| Delegate fails | Exact model ID, provider authentication, and image input support; do not assume the default Go model is available |
+| Chat image not found | Call `image_view` without paths; only current-session supported data URLs qualify |
+| Unexpected permission prompt | Canonical path in metadata: the symlink target may be outside the worktree |
+| Browser not found | Browser installation or the explicit executable override |
+| Snap CDP fails | Snap user storage and permission to use loopback debugging; CLI fallback is deliberately unavailable |
+| Late page content missing | Increase `virtualTimeBudgetMs`; also increase the capture timeout if total load time needs it |
+| Capture times out | One deadline covers both attempts; slow or unreachable navigation can consume it before fallback |
+| Output already exists | Choose a fresh name; the plugin refuses overwrites |
+| Plugin load reports `paths.filter` | Upgrade to 0.4.1 or later and restart; older exports confused the plugin loader |
 
-Upgrade to 0.4.1 or newer and restart OpenCode. Older versions exported a
-permission helper from the plugin entry point; OpenCode could register the tools
-and then mistakenly call that helper as another plugin initializer. This was a
-plugin export defect, not a model or provider failure.
-
-### A screenshot times out or is cancelled
-
-The capture budget includes both backends, not a fresh timeout per attempt.
-Cancellation does not retry. A short delay while the browser exits is expected.
-For a genuinely slow page, increase `screenshotTimeoutMs`; increasing the
-late-content budget alone does not increase the overall deadline.
-
-### The model did not see an image
-
-Check the active model capability and `visionDelegate.forceFor` in OpenCode. An
-unlisted vision model should receive an attachment. A text-only or forced model
-should receive a `Vision via <modelID>:` block; verify that
-`visionDelegate.enabled` is true and the configured provider/model is
-authenticated and supports image input. Delegation failures are returned as text
-and never replaced with a guessed description.
-
-If the image was attached in chat, call `image_view` without `paths` or with
-`source: "latest"`. A text-only model is instructed to do this automatically.
-Use `source: "session"` only when comparison across recent image batches is
-intentional. Session lookup accepts data URLs already stored by OpenCode; it does
-not fetch remote attachment URLs.
-
-### Permission was requested for an unexpected directory
-
-The plugin authorizes canonical paths after resolving symlinks. Inspect the
-resolved path in the metadata: a link may point outside the worktree.
-
-### Chromium was not found
-
-Install Chromium/Chrome or set `OPENCODE_SEE_CHROMIUM` to an executable. The
-tool returns an OS-specific hint when discovery finds nothing.
-
-### CDP fails under snap
-
-Make sure the snap can create data under its user directory and no mandatory
-security policy blocks loopback debugging. The plugin intentionally does not
-fall back to CLI for snap.
-
-### A page captures before late content appears
-
-Increase `virtualTimeBudgetMs`. For a slow page, also increase
-`screenshotTimeoutMs`. Keep both bounded; this is a short-lived tool call, not a
-browser test runner.
+Configuration errors include the relevant field or path. See
+[Configuration](./configuration.md) for precedence and all overrides.
 
 ## Verification
 
-```bash
-npm install
-npm run typecheck
-```
+For development, install all dependencies with `npm ci`, then run `npm run check`.
+The existing suite covers routing, extraction, permissions, configuration, and
+capture lifecycle. CI runs the same command on Node.js 22.
 
-For a manual capture check, open a small local HTTP page and inspect the saved
-PNG. Also try an unreachable URL, a page that never finishes loading, cancellation
-before and during capture, and an existing output path. Check that cancellation
-does not start fallback, failed calls leave no browser/profile behind, and logs
-contain no delayed unhandled CDP rejection. Exercise an ordinary Chromium CLI
-fallback as well as Snap CDP when those installations are available.
-
-For live acceptance, use `image_view` with a text-only model, a forced native
-model, and an unlisted native model. The first two should receive a focused
-`Vision via` answer without an attachment; the unlisted model should receive the
-original attachment without a delegate call. Also verify an explicit local path,
-`source: "session"`, and `screenshot` with `question` when those paths change.
+After a runtime update, load the plugin in a fresh host session. Check a local
+image and a chat attachment with native vision, then a text-only or forced model
+with a specific question. For browser changes, capture a small local page,
+inspect the saved PNG, and verify cancellation leaves no browser or temporary
+profile. Do not infer live acceptance from unit tests alone.

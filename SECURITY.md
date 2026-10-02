@@ -1,5 +1,7 @@
 # Security policy
 
+[English](./SECURITY.md) · [Русский](./SECURITY.ru.md) · [Home](./README.md)
+
 ## Supported versions
 
 Security fixes are made on the latest release line.
@@ -28,7 +30,7 @@ authentication and transport; the plugin never reads those credentials. Treat
 the delegate configuration as a data-routing choice and use only a provider you
 trust with the selected images.
 
-When `image_view` uses `latest` or `session`, the plugin reads projected messages
+When `image_view` uses `latest` or `session`, the plugin reads stored messages
 only for the calling OpenCode session ID. It accepts supported data-URL images
 from top-level user file parts and completed tool attachments, validates their
 byte signatures, and keeps no cache. It does not enumerate other sessions,
@@ -39,3 +41,14 @@ filesystem permission.
 The `screenshot` tool starts a local browser process and allows only HTTP and
 HTTPS URLs. A page can still target services reachable from the local machine;
 review URLs before approving tool use in untrusted sessions.
+
+Each image is bounded to 20 MiB and screenshot viewports to 32 megapixels.
+These bounds reduce accidental resource exhaustion; header checks are not a
+full decoder or a sandbox. Output directories are checked after resolving
+symlinks, and screenshots use exclusive creation. Filesystem permissions and
+the host's operating-system identity remain the actual security boundary.
+
+Delegate sessions have tools disabled. Timeout or cancellation requests a
+server-side abort before optional deletion. Cleanup failures are logged rather
+than silently treated as success. A retained delegate session or saved screenshot
+continues to hold image data; include those surfaces in your retention policy.

@@ -1,5 +1,4 @@
 import type { PluginInput } from "@opencode-ai/plugin"
-import type { VisionDelegateConfig } from "./config.js"
 
 export type ModelCapability = {
   providerID: string
@@ -29,13 +28,14 @@ export async function resolveModelCapability(
   client: PluginInput["client"],
   cache: ModelCapabilityCache,
   sessionID: string,
-  delegate: VisionDelegateConfig,
+  signal?: AbortSignal,
 ): Promise<ModelCapability> {
+  signal?.throwIfAborted()
   const cached = cache.get(sessionID)
   if (cached) return cached
 
   try {
-    const response = await client.session.get({ path: { id: sessionID }, throwOnError: true })
+    const response = await client.session.get({ path: { id: sessionID }, signal, throwOnError: true })
     const model = sessionModel(response.data)
     if (!model) return { providerID: "unknown", modelID: "unknown", image: false }
     const embedded = embeddedImageCapability(model.raw)
@@ -48,7 +48,7 @@ export async function resolveModelCapability(
     }
 
     try {
-      const providers = await client.config.providers({ throwOnError: true })
+      const providers = await client.config.providers({ signal, throwOnError: true })
       const catalogModel = providers.data.providers
         .find((provider) => provider.id === model.providerID)
         ?.models[model.modelID]
@@ -60,15 +60,17 @@ export async function resolveModelCapability(
         })
       }
     } catch {
-      // The configured delegate is a verified vision model and is the safe final fallback.
+      signal?.throwIfAborted()
+      // A configured model name alone does not prove image support.
     }
 
     return cacheCapability(cache, sessionID, {
       providerID: model.providerID,
       modelID: model.modelID,
-      image: model.providerID === delegate.providerID && model.modelID === delegate.modelID,
+      image: false,
     })
   } catch {
+    signal?.throwIfAborted()
     return { providerID: "unknown", modelID: "unknown", image: false }
   }
 }

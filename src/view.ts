@@ -1,11 +1,12 @@
 import type { ToolContext } from "@opencode-ai/plugin"
 import { readFile, realpath, stat } from "node:fs/promises"
 import { homedir } from "node:os"
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import {
   CORE_RESIZE_BASE64_BYTES,
   CORE_RESIZE_DIMENSION,
   MAX_IMAGES,
+  MAX_IMAGE_BYTES,
   type SupportedImageMime,
 } from "./constants.js"
 
@@ -26,11 +27,12 @@ export type ViewImagesOptions = {
   directory: string
   authorize: (paths: string[]) => Promise<void>
   home?: string
+  signal?: AbortSignal
 }
 
 function containsPath(root: string, target: string): boolean {
   const distance = relative(resolve(root), resolve(target))
-  return distance === "" || (!distance.startsWith("..") && !isAbsolute(distance))
+  return distance === "" || (distance !== ".." && !distance.startsWith(`..${sep}`) && !isAbsolute(distance))
 }
 
 export async function authorizeImagePaths(context: ToolContext, paths: string[]): Promise<void> {
@@ -112,7 +114,7 @@ function readUInt24LE(bytes: Buffer, offset: number): number {
 }
 
 function webpDimensions(bytes: Buffer): ImageDimensions | undefined {
-  if (bytes.length < 30) return undefined
+  if (bytes.length < 25) return undefined
   const chunk = bytes.toString("ascii", 12, 16)
   if (chunk === "VP8X" && bytes.length >= 30) {
     return { width: readUInt24LE(bytes, 24) + 1, height: readUInt24LE(bytes, 27) + 1 }
@@ -154,12 +156,13 @@ async function resolveExistingFile(value: string, directory: string, home?: stri
   }
 }
 
-export function prepareImage(bytes: Buffer, filename: string): PreparedImage {
+export function prepareImage(bytes: Buffer, filename: string, encoded?: string): PreparedImage {
   if (bytes.length === 0) throw new Error(`Image is empty: ${filename}`)
+  if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`Image exceeds the 20 MiB limit: ${filename}`)
   const mime = detectMime(bytes)
   if (!mime) throw new Error(`Unsupported image format: ${filename}. Use PNG, JPEG, WebP, or GIF.`)
   const dimensions = detectImageDimensions(bytes, mime)
-  const base64 = bytes.toString("base64")
+  const base64 = encoded ?? bytes.toString("base64")
   return {
     filename,
     mime,
@@ -173,10 +176,12 @@ export function prepareImage(bytes: Buffer, filename: string): PreparedImage {
   }
 }
 
-async function loadImage(path: string): Promise<ViewedImage> {
+async function loadImage(path: string, signal?: AbortSignal): Promise<ViewedImage> {
+  signal?.throwIfAborted()
   const info = await stat(path)
   if (!info.isFile()) throw new Error(`Image is not a regular file: ${path}`)
-  const bytes = await readFile(path)
+  if (info.size > MAX_IMAGE_BYTES) throw new Error(`Image exceeds the 20 MiB limit: ${path}`)
+  const bytes = await readFile(path, { signal })
   return {
     path,
     ...prepareImage(bytes, basename(path)),
@@ -184,6 +189,7 @@ async function loadImage(path: string): Promise<ViewedImage> {
 }
 
 export async function viewImages(options: ViewImagesOptions): Promise<ViewedImage[]> {
+  options.signal?.throwIfAborted()
   if (options.paths.length < 1 || options.paths.length > MAX_IMAGES) {
     throw new Error(`image_view requires between 1 and ${MAX_IMAGES} paths`)
   }
@@ -192,7 +198,9 @@ export async function viewImages(options: ViewImagesOptions): Promise<ViewedImag
   )
   if (new Set(resolved).size !== resolved.length) throw new Error("Image paths must be unique")
   await options.authorize(resolved)
-  return Promise.all(resolved.map(loadImage))
+  const images: ViewedImage[] = []
+  for (const path of resolved) images.push(await loadImage(path, options.signal))
+  return images
 }
 
 export function formatImageMetadata(images: ViewedImage[]): string {

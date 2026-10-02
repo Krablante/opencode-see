@@ -1,5 +1,5 @@
 import type { PluginInput } from "@opencode-ai/plugin"
-import { MAX_IMAGES, SUPPORTED_IMAGE_MIMES, type SupportedImageMime } from "./constants.js"
+import { MAX_IMAGES, MAX_IMAGE_BYTES, SUPPORTED_IMAGE_MIMES, type SupportedImageMime } from "./constants.js"
 import { prepareImage, type PreparedImage } from "./view.js"
 
 const LATEST_HISTORY_LIMIT = 64
@@ -17,15 +17,16 @@ export async function viewSessionImages(input: {
   client: PluginInput["client"]
   sessionID: string
   source: SessionImageSource
+  signal?: AbortSignal
 }): Promise<SessionImage[]> {
-  let messages = await sessionMessages(input.client, input.sessionID, input.source === "latest" ? LATEST_HISTORY_LIMIT : undefined)
-  let groups = imageGroups(messages)
-  let images = input.source === "latest" ? latestImages(groups) : newestSessionImages(groups)
-
-  if (input.source === "latest" && images.length === 0 && messages.length === LATEST_HISTORY_LIMIT) {
-    messages = await sessionMessages(input.client, input.sessionID)
-    groups = imageGroups(messages)
-    images = latestImages(groups)
+  let limit = LATEST_HISTORY_LIMIT
+  let images: SessionImage[]
+  while (true) {
+    input.signal?.throwIfAborted()
+    const messages = await sessionMessages(input.client, input.sessionID, limit, input.signal)
+    images = selectImages(imageGroups(messages), input.source)
+    if (messages.length < limit || images.length === MAX_IMAGES || (input.source === "latest" && images.length > 0)) break
+    limit *= 2
   }
 
   if (images.length === 0) {
@@ -51,11 +52,13 @@ export function formatSessionImageMetadata(images: SessionImage[]): string {
 async function sessionMessages(
   client: PluginInput["client"],
   sessionID: string,
-  limit?: number,
+  limit: number,
+  signal?: AbortSignal,
 ): Promise<unknown[]> {
   const response = await client.session.messages({
     path: { id: sessionID },
-    ...(limit === undefined ? {} : { query: { limit } }),
+    query: { limit },
+    signal,
     throwOnError: true,
   })
   return Array.isArray(response.data) ? response.data : []
@@ -96,64 +99,45 @@ function fileCandidate(value: unknown, origin: ImageCandidate["origin"]): ImageC
   }
 }
 
-function prepareCandidates(candidates: ImageCandidate[]): SessionImage[] {
-  const images: SessionImage[] = []
-  for (const candidate of candidates) {
-    const bytes = decodeDataUrl(candidate.url)
-    if (!bytes) continue
-    try {
-      const prepared = prepareImage(bytes, candidate.filename ?? "session-image")
-      images.push({ ...prepared, origin: candidate.origin })
-    } catch {
-      // Session history can contain malformed or mislabeled files. Ignore them as unsupported.
-    }
+function prepareCandidate(candidate: ImageCandidate): SessionImage | undefined {
+  const decoded = decodeDataUrl(candidate.url)
+  if (!decoded) return
+  try {
+    const prepared = prepareImage(decoded.bytes, candidate.filename ?? "session-image", decoded.encoded)
+    return { ...prepared, origin: candidate.origin }
+  } catch {
+    // Session history can contain malformed or oversized files. Ignore them as unsupported.
   }
-  return images
 }
 
-function decodeDataUrl(url: string): Buffer | undefined {
+function decodeDataUrl(url: string): { bytes: Buffer; encoded: string } | undefined {
   const comma = url.indexOf(",")
   if (comma < 0 || !url.slice(0, comma).toLowerCase().endsWith(";base64")) return
   const encoded = url.slice(comma + 1)
-  if (encoded.length === 0) return
+  if (encoded.length === 0 || encoded.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4) return
+  if (encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return
   try {
-    return Buffer.from(encoded, "base64")
+    return { bytes: Buffer.from(encoded, "base64"), encoded }
   } catch {
     return
   }
 }
 
-function latestImages(groups: ImageCandidate[][]): SessionImage[] {
-  for (let index = groups.length - 1; index >= 0; index--) {
-    const images = unique(prepareCandidates(groups[index] ?? [])).slice(0, MAX_IMAGES)
-    if (images.length > 0) return images
-  }
-  return []
-}
-
-function newestSessionImages(groups: ImageCandidate[][]): SessionImage[] {
+function selectImages(groups: ImageCandidate[][], source: SessionImageSource): SessionImage[] {
   const images: SessionImage[] = []
   const seen = new Set<string>()
   for (let index = groups.length - 1; index >= 0 && images.length < MAX_IMAGES; index--) {
     for (const candidate of groups[index] ?? []) {
       if (seen.has(candidate.url)) continue
       seen.add(candidate.url)
-      const image = prepareCandidates([candidate])[0]
+      const image = prepareCandidate(candidate)
       if (!image) continue
       images.push(image)
       if (images.length === MAX_IMAGES) break
     }
+    if (source === "latest" && images.length > 0) return images
   }
   return images
-}
-
-function unique(images: SessionImage[]): SessionImage[] {
-  const seen = new Set<string>()
-  return images.filter((image) => {
-    if (seen.has(image.dataUrl)) return false
-    seen.add(image.dataUrl)
-    return true
-  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

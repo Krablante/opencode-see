@@ -15,6 +15,7 @@ export async function describeImages(
   question?: string,
 ): Promise<string> {
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)])
+  requestSignal.throwIfAborted()
   const created = await client.session.create({
     body: { title: "opencode-see delegate" },
     signal: requestSignal,
@@ -27,6 +28,7 @@ export async function describeImages(
       path: { id: sessionID },
       body: {
         model: { providerID: config.providerID, modelID: config.modelID },
+        tools: { "*": false },
         parts: [
           { type: "text", text: delegatePrompt(config.prompt, question) },
           ...images.map((image) => ({
@@ -40,6 +42,10 @@ export async function describeImages(
       signal: requestSignal,
       throwOnError: true,
     })
+    const failure = response.data.info?.error
+    if (failure) {
+      throw new Error(`Vision delegate failed: ${typeof failure.data?.message === "string" ? failure.data.message : failure.name}`)
+    }
     const text = response.data.parts
       .filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
       .map((part) => part.text.trim())
@@ -48,6 +54,17 @@ export async function describeImages(
     if (!text) throw new Error("Vision delegate returned no assistant text")
     return text
   } finally {
+    if (requestSignal.aborted) {
+      try {
+        await client.session.abort({
+          path: { id: sessionID },
+          signal: AbortSignal.timeout(10_000),
+          throwOnError: true,
+        })
+      } catch (error) {
+        console.warn(`[opencode-see] Could not stop vision delegate session ${sessionID}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
     if (config.deleteAfter) {
       try {
         await client.session.delete({

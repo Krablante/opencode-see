@@ -98,6 +98,26 @@ describe("config", () => {
     )
   })
 
+  it("rejects malformed config objects instead of silently enabling defaults", async () => {
+    const root = await mkdtemp(join(tmpdir(), "opencode-see-config-shape-"))
+    roots.push(root)
+    const path = join(root, "see.json")
+    for (const value of [null, [], false, { visionDelegate: false }, { viewport: [] }]) {
+      await writeFile(path, JSON.stringify(value))
+      await assert.rejects(loadConfig("/work", { OPENCODE_SEE_CONFIG: path }), /must be a JSON object/)
+    }
+  })
+
+  it("validates and deduplicates exact forced routes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "opencode-see-routes-"))
+    roots.push(root)
+    const path = join(root, "see.json")
+    await writeFile(path, JSON.stringify({ visionDelegate: { forceFor: ["custom/a", "custom/a", "custom/b/c"] } }))
+    assert.deepEqual((await loadConfig("/work", { OPENCODE_SEE_CONFIG: path })).visionDelegate.forceFor, ["custom/a", "custom/b/c"])
+    await writeFile(path, JSON.stringify({ visionDelegate: { forceFor: ["bad"] } }))
+    await assert.rejects(loadConfig("/work", { OPENCODE_SEE_CONFIG: path }), /provider\/model format/)
+  })
+
   it("rejects invalid delegate booleans", async () => {
     await assert.rejects(
       loadConfig("/work", { OPENCODE_SEE_DELEGATE_ENABLED: "maybe" }, "/home/test", "linux"),

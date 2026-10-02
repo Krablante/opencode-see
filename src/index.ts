@@ -10,7 +10,7 @@ import { authorizeImagePaths, formatImageMetadata, viewImages, type PreparedImag
 import { createVisualResult } from "./vision.js"
 
 const TEXT_ONLY_IMAGE_GUIDANCE =
-  'This model cannot inspect image bytes. For any image attachment, path, reference, or unsupported-image error, use exactly one image_view call as the first and only visual action. An attachment filename is not a path: use source="latest"; use paths only for an explicit real path. Pass the user\'s exact visual question as question, then rely on the "Vision via" result even if incomplete. Never inspect the image with read, glob, bash, ffmpeg, Python, screenshot, or file search, and never reopen it.'
+  'This model cannot inspect image bytes. For an existing image attachment, local path, or unsupported-image error, start with one image_view call. An attachment filename is not a path: use source="latest"; use paths only for an explicit real path. For a requested web page capture, use screenshot with its URL. Pass the user\'s exact visual question as question and use the "Vision via" answer. Do not infer pixels from filenames or decode images with read, shell commands, or file search. If delegation fails, report that failure instead of retrying the same image through other tools.'
 
 export const OpenCodeSeePlugin: Plugin = async ({ client }) => {
   const capabilities: ModelCapabilityCache = new Map()
@@ -47,6 +47,7 @@ export const OpenCodeSeePlugin: Plugin = async ({ client }) => {
               paths: args.paths,
               directory: context.directory,
               authorize: (paths) => authorizeImagePaths(context, paths),
+              signal: context.abort,
             })
             images = localImages
             metadata = formatImageMetadata(localImages)
@@ -55,6 +56,7 @@ export const OpenCodeSeePlugin: Plugin = async ({ client }) => {
               client,
               sessionID: context.sessionID,
               source: args.source ?? "latest",
+              signal: context.abort,
             })
             images = sessionImages
             metadata = formatSessionImageMetadata(sessionImages)

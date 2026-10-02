@@ -1,6 +1,5 @@
 {
   "screenshotDirectory": ".opencode/screenshots",
-  "chromiumPath": "/usr/bin/chromium",
   "viewport": {
     "width": 1440,
     "height": 900

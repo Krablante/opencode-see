@@ -1,11 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import { once } from "node:events"
 import { accessSync, constants as fsConstants } from "node:fs"
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises"
 import { homedir, platform as osPlatform, tmpdir } from "node:os"
-import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import type { SeeConfig } from "./config.js"
-import { USER_AGENT } from "./constants.js"
+import { MAX_IMAGE_BYTES, USER_AGENT } from "./constants.js"
+import { detectImageDimensions, detectMime } from "./view.js"
 
 export type CaptureBackend = "cdp" | "cli"
 export type ScreenshotResult = {
@@ -35,7 +36,7 @@ type CdpReply = { id?: number; result?: Record<string, unknown>; error?: { messa
 
 function executableFromPath(name: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string | undefined {
   const pathValue = env.PATH ?? ""
-  const extensions = platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""]
+  const extensions = platform === "win32" ? ["", ...(env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")] : [""]
   for (const directory of pathValue.split(delimiter)) {
     if (!directory) continue
     for (const extension of extensions) {
@@ -65,7 +66,13 @@ export async function findChromium(
     "chromium",
     platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : undefined,
     platform === "win32" && env.PROGRAMFILES ? join(env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe") : undefined,
+    ...[env.PROGRAMFILES, env["PROGRAMFILES(X86)"], env.LOCALAPPDATA]
+      .filter((root): root is string => platform === "win32" && Boolean(root))
+      .map((root) => join(root, "Google", "Chrome", "Application", "chrome.exe")),
   ].filter((candidate): candidate is string => Boolean(candidate))
+  if (configured || env.OPENCODE_SEE_CHROMIUM) {
+    candidates.splice(1)
+  }
   for (const candidate of candidates) {
     if (!isAbsolute(candidate) && !candidate.includes("/") && !candidate.includes("\\")) {
       const found = executableFromPath(candidate, env, platform)
@@ -109,8 +116,28 @@ function outputTarget(root: string, requested?: string): string {
   const withExtension = name.toLowerCase().endsWith(".png") ? name : `${name}.png`
   const target = resolve(root, withExtension)
   const distance = relative(root, target)
-  if (distance.startsWith("..") || isAbsolute(distance)) throw new Error("output_path escapes the screenshot directory")
+  if (distance === ".." || distance.startsWith(`..${sep}`) || isAbsolute(distance)) throw new Error("output_path escapes the screenshot directory")
   return target
+}
+
+async function prepareOutput(root: string, target: string): Promise<string> {
+  await mkdir(root, { recursive: true })
+  const canonicalRoot = await realpath(root)
+  let parent = canonicalRoot
+  for (const segment of relative(root, dirname(target)).split(sep).filter(Boolean)) {
+    const next = join(parent, segment)
+    try {
+      await mkdir(next)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+    }
+    parent = await realpath(next)
+    const distance = relative(canonicalRoot, parent)
+    if (distance === ".." || distance.startsWith(`..${sep}`) || isAbsolute(distance)) {
+      throw new Error("output_path escapes the screenshot directory through a symlink")
+    }
+  }
+  return join(parent, basename(target))
 }
 
 async function wait(delayMs: number, signal?: AbortSignal): Promise<void> {
@@ -314,7 +341,7 @@ async function captureCdp(
     const result = await client.send("Page.captureScreenshot", {
       format: "png",
       fromSurface: true,
-      captureBeyondViewport: true,
+      captureBeyondViewport: false,
     })
     if (typeof result.data !== "string") throw new Error("CDP screenshot response did not contain image data")
     return Buffer.from(result.data, "base64")
@@ -372,10 +399,14 @@ export async function captureScreenshot(options: CaptureOptions): Promise<Screen
   if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
     throw new Error("Screenshot width and height must be positive integers")
   }
+  if (!Number.isSafeInteger(width * height) || width * height > 32 * 1024 * 1024) {
+    throw new Error("Screenshot viewport exceeds the 32 megapixel limit")
+  }
   const browserPath = await findChromium(options.config.chromiumPath, env, home, platform)
-  if (!browserPath) throw new CaptureUnavailableError(installationMessage(platform))
-  const absolutePath = outputTarget(options.config.screenshotRoot, options.outputPath)
-  await mkdir(dirname(absolutePath), { recursive: true })
+  if (!browserPath) throw new CaptureUnavailableError(options.config.chromiumPath
+    ? `Configured Chromium executable was not found: ${options.config.chromiumPath}`
+    : installationMessage(platform))
+  const absolutePath = await prepareOutput(options.config.screenshotRoot, outputTarget(options.config.screenshotRoot, options.outputPath))
   try {
     await access(absolutePath)
     throw new Error(`Screenshot output already exists: ${absolutePath}`)
@@ -421,6 +452,9 @@ export async function captureScreenshot(options: CaptureOptions): Promise<Screen
       )
     }
     signal.throwIfAborted()
+    if (bytes.length > MAX_IMAGE_BYTES) throw new Error("Screenshot exceeds the 20 MiB image limit")
+    if (detectMime(bytes) !== "image/png") throw new Error("Chromium did not return a PNG screenshot")
+    detectImageDimensions(bytes, "image/png")
     await writeFile(absolutePath, bytes, { flag: "wx" })
     return { absolutePath, filename: basename(absolutePath), bytes, backend, width, height }
   } catch (error) {

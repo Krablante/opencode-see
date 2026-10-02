@@ -1,9 +1,11 @@
 import assert from "node:assert/strict"
-import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, open, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, it } from "node:test"
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { PluginInput, ToolContext } from "@opencode-ai/plugin"
+import { viewSessionImages } from "../src/session-images.js"
+import { MAX_IMAGE_BYTES } from "../src/constants.js"
 import { authorizeImagePaths, detectImageDimensions, detectMime, formatImageMetadata, viewImages } from "../src/view.js"
 
 const roots: string[] = []
@@ -66,6 +68,15 @@ describe("image formats", () => {
 
   it("rejects unsupported signatures", () => {
     assert.equal(detectMime(Buffer.from("not an image")), undefined)
+  })
+
+  it("reads a short lossless WebP header", () => {
+    const bytes = Buffer.alloc(25)
+    bytes.write("RIFF", 0)
+    bytes.write("WEBPVP8L", 8)
+    bytes[20] = 0x2f
+    bytes.writeUInt32LE((7 << 14) | 11, 21)
+    assert.deepEqual(detectImageDimensions(bytes, "image/webp"), { width: 12, height: 8 })
   })
 })
 
@@ -130,6 +141,15 @@ describe("viewImages", () => {
       /between 1 and 5/,
     )
   })
+
+  it("rejects oversized files before reading their content", async () => {
+    const root = await mkdtemp(join(tmpdir(), "opencode-see-large-"))
+    roots.push(root)
+    const file = await open(join(root, "large.png"), "w")
+    await file.truncate(MAX_IMAGE_BYTES + 1)
+    await file.close()
+    await assert.rejects(viewImages({ paths: ["large.png"], directory: root, authorize: async () => {} }), /20 MiB limit/)
+  })
 })
 
 describe("OpenCode permissions", () => {
@@ -155,5 +175,67 @@ describe("OpenCode permissions", () => {
     } as unknown as ToolContext
     await authorizeImagePaths(context, ["/workspace/project/image.png"])
     assert.deepEqual(calls.map((call) => call.permission), ["read"])
+  })
+
+  it("does not mistake a dot-prefixed child for a parent traversal", async () => {
+    const calls: string[] = []
+    const context = { worktree: "/workspace", ask: async (request: { permission: string }) => { calls.push(request.permission) } } as unknown as ToolContext
+    await authorizeImagePaths(context, ["/workspace/..preview/image.png"])
+    assert.deepEqual(calls, ["read"])
+  })
+})
+
+describe("session images", () => {
+  function message(id: number, images = 1) {
+    return { info: { role: "user" }, parts: Array.from({ length: images }, (_, index) => ({
+      type: "file", mime: "image/jpeg", filename: `${id}-${index}.png`,
+      url: `data:image/jpeg;base64,${png(id + index + 1, 2).toString("base64")}`,
+    })) }
+  }
+
+  function client(history: unknown[], calls: number[]) {
+    return { session: { messages: async (input: { query: { limit: number } }) => {
+      calls.push(input.query.limit)
+      return { data: history.slice(-input.query.limit) }
+    } } } as unknown as PluginInput["client"]
+  }
+
+  it("takes the latest batch in order, caps it at five and detects MIME from bytes", async () => {
+    const calls: number[] = []
+    const images = await viewSessionImages({ client: client([message(1), message(10, 8)], calls), sessionID: "s", source: "latest" })
+    assert.deepEqual(images.map((image) => image.filename), ["10-0.png", "10-1.png", "10-2.png", "10-3.png", "10-4.png"])
+    assert.equal(images[0].mime, "image/png")
+    assert.deepEqual(calls, [64])
+  })
+
+  it("finds five recent unique images without loading a long full history", async () => {
+    const calls: number[] = []
+    const history = Array.from({ length: 500 }, (_, index) => message(index))
+    const images = await viewSessionImages({ client: client(history, calls), sessionID: "s", source: "session" })
+    assert.deepEqual(images.map((image) => image.filename), ["499-0.png", "498-0.png", "497-0.png", "496-0.png", "495-0.png"])
+    assert.deepEqual(calls, [64])
+  })
+
+  it("expands the window only when older images are needed", async () => {
+    const calls: number[] = []
+    const history = [message(1), ...Array.from({ length: 70 }, () => ({ info: { role: "assistant" }, parts: [] }))]
+    const images = await viewSessionImages({ client: client(history, calls), sessionID: "s", source: "latest" })
+    assert.equal(images[0].filename, "1-0.png")
+    assert.deepEqual(calls, [64, 128])
+  })
+
+  it("ignores malformed data and remote URLs and uses completed tool attachments", async () => {
+    const attachment = message(5).parts[0]
+    const history = [message(1), { info: { role: "assistant" }, parts: [
+      { type: "tool", state: { status: "running", attachments: [message(10).parts[0]] } },
+      { type: "tool", state: { status: "completed", attachments: [
+        { ...attachment, url: "https://example.com/image.png" },
+        { ...attachment, url: "data:image/png;base64,aGVsbG8=" }, attachment, attachment,
+      ] } },
+    ] }]
+    const images = await viewSessionImages({ client: client(history, []), sessionID: "s", source: "latest" })
+    assert.equal(images.length, 1)
+    assert.equal(images[0].filename, "5-0.png")
+    assert.equal(images[0].origin, "tool attachment")
   })
 })

@@ -1,140 +1,108 @@
 # Architecture
 
-The plugin is an adapter between local or session-owned image bytes and
-OpenCode's existing attachment contract.
+[English](./architecture.md) · [Русский](./architecture.ru.md) · [Home](../README.md)
 
-```text
-local path ── resolve + authorize ──┐
-                                    ├──> validated bytes ──> data:image/...;base64,...
-session history ── current ID only ─┘                         │
-                                                              ▼
-                                                 OpenCode file attachment
-                                               │
-                                               ▼
-                              capability + exact route decision
-                                  │                    │
-                         native image route     text-only or forceFor
-                                  │                    │
-                          active transport      temporary OpenCode session
-                                  │                    │
-                           vision input          delegate text result
+The plugin owns image acquisition and the choice between a native attachment
+and delegated text. OpenCode owns authentication, provider transport, model
+execution, and session storage. There is no separate provider client, browser
+service, persistent cache, or build output.
+
+```mermaid
+flowchart LR
+  L["Local file"] --> V["Resolve, authorize, read headers"]
+  H["Current-session data URL"] --> V
+  B["Chromium screenshot"] --> V
+  V --> R{"Active model accepts images?"}
+  R -->|"Yes, unless forced"| A["Native file attachment"]
+  R -->|"No, or forced"| D["Temporary vision session, tools disabled"]
+  D --> T["Text answer"]
 ```
 
-## Why there is still no provider code
+## Responsibilities
 
-The active OpenCode session already owns provider authentication, capability
-selection, request conversion, retries, and model choice. Reimplementing any of
-that in this plugin would make it provider-specific and create a second secret
-boundary. `opencode-see` therefore has no `auth` plugin hook and never calls a
-provider API directly. Vision delegation asks the existing OpenCode SDK client
-to run a temporary session; the server applies its normal authentication,
-transport, retries, and model configuration.
+| Source | Owns |
+| --- | --- |
+| `src/index.ts` | Tool schemas, orchestration, and OpenCode hooks |
+| `src/view.ts` | Local path permissions, format headers, image preparation |
+| `src/session-images.ts` | Current-session history selection and data-URL extraction |
+| `src/capture.ts` | Browser discovery, CDP/CLI lifecycle, and screenshot output |
+| `src/vision.ts` | Native versus delegate route and result formatting |
+| `src/capability.ts` | Active model capability, cached by session |
+| `src/delegate.ts` | Temporary model request, cancellation, and session cleanup |
+| `src/compaction-replay.ts` | Restore fresh image tool attachments at one remote compaction boundary |
+| `src/config.ts`, `src/constants.ts` | Configuration precedence, validation, defaults, and limits |
 
-The only network activity initiated by this repository is:
+The entry point exports only the plugin initializer, with named and default
+aliases of the same function. Some OpenCode loaders call each distinct runtime
+export as an initializer, so ordinary helpers belong in their owning modules.
 
-- Chromium loading the URL explicitly passed to `screenshot`;
-- local loopback HTTP and WebSocket traffic used to control that Chromium
-  process through the Chrome DevTools Protocol;
-- an OpenCode SDK request that creates, prompts, and optionally deletes a
-  temporary vision session when the active model is text-only or explicitly
-  listed in `visionDelegate.forceFor`;
-- a current-session OpenCode history read when `image_view` uses `latest` or
-  `session` as its source;
-- one bounded local OpenCode session-history read when a completed remote
-  mid-turn compaction has hidden an active image tool result.
+## Image acquisition and cost
 
-## Remote compaction boundary
+Local paths pass through `realpath` before permission checks. The resolved target
+cannot hide outside the worktree behind an ordinary symlink. After authorization,
+files are read sequentially, with a 20 MiB size check before reading and another
+check on the returned bytes. Header parsing avoids an image-decoding dependency.
+Base64 adds roughly one third to stored byte size; up to five data URLs remain
+in the result. The host controls downstream resize and provider conversion.
 
-Some compatible hosts can replace an active turn with opaque server-side state
-between a tool result and the model continuation. `opencode-see` handles only
-the exact completed boundary represented by an automatic `mid-turn` compaction
-part with an OpenAI remote payload and an original turn ID.
+Session retrieval starts with the newest 64 messages for both source modes.
+It doubles the requested limit only if more history is needed. `latest` stops
+at the first valid batch; `session` stops at five valid unique images or the end
+of history. Only selected candidates are decoded, and their existing base64 is
+reused. Stored metadata never substitutes for signature checks.
 
-The message hook checks only the final two projected messages. On a match, it
-reads at most 32 recent session messages, finds the last assistant step from the
-original turn, and restores up to five completed `image_view` or `screenshot`
-attachments in a synthetic user message. That message exists only in the model
-projection. It is not written to session history or shown in the UI.
+The legacy SDK exposes a tail limit rather than cursor pagination. An old image
+or a session with fewer than five unique images can still require reading the
+whole history. Growing windows can transfer roughly twice that history before
+the final request. The plugin keeps no second index or cache to maintain.
 
-There is no separate provider, model, auth, or config lookup, and no cache,
-background task, or persistent replay state. Ordinary OpenCode, local
-compaction, legacy transports, other providers, uncompacted turns, and completed
-continuations return before the session read. Provider retries rebuild the same
-projection until one normal assistant continuation completes.
+## Model routing and cleanup
 
-## Vision delegation boundary
+`chat.params` records the active model's declared image capability. Tools use
+that per-session value and fall back to session metadata and the provider catalog
+if needed. An unknown capability is treated conservatively. Session deletion
+removes its cache entry. An exact `forceFor` match selects delegation even for
+a native model.
 
-The `chat.params` hook records the active model ID and declared image capability
-for each session. A tool call first reads that cache and falls back to the live
-session plus provider catalog when needed. Native vision returns the original
-attachments unchanged unless the exact active `provider/model` reference is in
-the configured `forceFor` list. Text-only and explicitly forced sessions either
-run the configured delegate or receive an explicit routing message when
-delegation is disabled.
+Delegation creates one temporary session and sends ordinary file parts through
+the OpenCode SDK. `tools: { "*": false }` disables agent tools in that session.
+The result must contain assistant text without an assistant error. The calling
+tool's cancellation and one timeout bound creation and prompting; an aborted
+request also invokes the server's session-abort endpoint. Deletion is enabled
+by default. Abort and deletion each have a separate bounded cleanup request.
+No provider credentials are read or copied.
 
-Delegate requests are bounded by the configured timeout and the calling tool's
-abort signal. They use ordinary file parts in a temporary session, return only
-assistant text to the caller, and delete that session by default. The plugin
-keeps no provider secret and no image-description cache. A per-call `question`
-supplements rather than replaces the configured baseline delegate prompt. Exact
-matching keeps routing predictable and adds no provider-specific branch. Only
-models that explicitly declare `input.image=false` receive the system hint that
-routes otherwise opaque user attachments to `image_view`; `forceFor` changes
-tool results and does not rewrite direct user attachments.
+## Browser lifecycle
 
-## Session image boundary
+CDP starts a headless Chromium with a fresh profile and a random loopback
+debugging port. The plugin reads `DevToolsActivePort`, discovers the page target,
+sets viewport metrics, navigates, waits for load and late content, then captures
+a viewport PNG. HTTP and WebSocket traffic control only that browser; the page
+itself can access services reachable from the host.
 
-`image_view` addresses the calling `ToolContext.sessionID` through
-`client.session.messages`; it never enumerates sessions. `latest` first inspects
-the newest 64 messages and falls back to the full current history only when that
-window is full and contains no supported image. Explicit `session` lookup reads
-the current history and returns at most five newest unique images.
+An ordinary installation can fall back to Chromium's screenshot CLI after a CDP
+failure. Snap Chromium uses CDP only: its private `/tmp` makes CLI file handoff
+unreliable. Snap profiles live in snap-visible user storage. CLI also uses a
+private profile, not the operator's default browser profile.
 
-The extractor accepts top-level user file parts and `attachments` from completed
-tool states. It ignores remote URLs, unsupported labels, incomplete tool states,
-and malformed data. Accepted data URLs are decoded and passed through the same
-signature and dimension checks as local files, so attachment metadata is not a
-trust shortcut. Results are ephemeral; there is no cache, index, database, or
-cross-session lookup.
+One deadline covers both attempts. Cancellation or timeout skips fallback.
+Closing CDP settles command and event waits. Each attempt stops its browser and
+removes its profile before returning. Unix launches use a private process group;
+shutdown allows one second for SIGTERM before SIGKILL and kills remaining group
+members. Windows uses child-process termination. Cleanup may extend elapsed
+time beyond the capture deadline. The final PNG is checked and saved with an
+exclusive write after resolving output-directory symlinks.
 
-## Image path boundary
+## Remote compaction replay
 
-The plugin entry point exports only the plugin initializer (named and default
-aliases of the same function). Permission helpers live in `view.ts`: OpenCode's
-legacy loader treats each distinct runtime export as a plugin initializer.
+The message transform normally performs no I/O. It acts only when the final two
+projected messages are an automatic OpenAI remote `mid-turn` compaction marker
+and its completed assistant summary. The marker must carry the original turn ID.
 
-Paths are expanded and canonicalized with `realpath` before permission is
-requested. This matters for symlinks: a link inside the worktree cannot hide an
-external target. The tool asks `external_directory` for canonical paths outside
-the worktree, then asks `read` for every image.
-
-MIME detection uses file signatures. Dimensions are parsed directly from PNG,
-JPEG, WebP, and GIF headers; no decoding library is loaded. The bytes are then
-encoded once as a data URL.
-
-## Screenshot boundary
-
-CDP is the primary backend. It starts one short-lived headless browser, obtains
-the debugging port from its temporary profile, navigates one page, captures a
-PNG as base64, writes the configured output, and removes the profile.
-
-Ordinary browser installations may use a headless CLI fallback. Snap Chromium
-does not: its private `/tmp` makes CLI file handoff unreliable, while CDP returns
-the bytes over loopback independently of snap filesystem visibility.
-
-One cancellable deadline covers both capture backends. CDP process failures
-cancel discovery and socket work; closing the socket settles all pending
-commands and event waits. Navigation and load are awaited together. CLI fallback
-uses the remaining deadline and its own temporary profile, never the default
-browser profile. Cancellation and deadline expiry bypass fallback entirely.
-
-Both backends stop their browser and remove their profile before returning bytes.
-On Unix, each browser owns an isolated process group; shutdown terminates that
-group and kills remaining children after the launcher exits so they cannot
-recreate the removed profile. Shutdown allows one second for SIGTERM before
-SIGKILL, then waits for the launcher to exit. This cleanup can briefly extend the
-observed call time beyond the capture deadline.
-One final exclusive write saves the image without replacing an existing file.
-
-There is no OpenCode/OpenCodez core patch. Both applications load the same
-public plugin interface.
+The hook reads at most 32 recent messages with a five-second request deadline
+and restores up to five completed
+`image_view` or `screenshot` attachments from the preceding assistant step of
+that turn. The synthetic message exists only in the model projection. It adds
+no persisted message, UI row, cache, or separate provider lookup. Ordinary
+OpenCode, local compaction, other providers, and later continuations skip this
+path.
